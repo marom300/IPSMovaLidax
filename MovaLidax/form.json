@@ -1,0 +1,66 @@
+{
+    "elements": [
+        {
+            "type": "ValidationTextBox",
+            "name": "Email",
+            "caption": "E-Mail (MOVAhome)"
+        },
+        {
+            "type": "PasswordTextBox",
+            "name": "Password",
+            "caption": "Passwort"
+        },
+        {
+            "type": "Select",
+            "name": "Region",
+            "caption": "Region",
+            "options": [
+                { "caption": "Europa (EU)", "value": "eu" },
+                { "caption": "USA", "value": "us" },
+                { "caption": "China", "value": "cn" },
+                { "caption": "Russland", "value": "ru" },
+                { "caption": "Singapur", "value": "sg" }
+            ]
+        },
+        {
+            "type": "Select",
+            "name": "AccountType",
+            "caption": "Konto-Typ",
+            "options": [
+                { "caption": "MOVA", "value": "mova" },
+                { "caption": "Dreame", "value": "dreame" }
+            ]
+        },
+        {
+            "type": "ValidationTextBox",
+            "name": "DeviceID",
+            "caption": "Geräte-ID (optional – leer = erstes Gerät)"
+        },
+        {
+            "type": "NumberSpinner",
+            "name": "Interval",
+            "caption": "Abrufintervall",
+            "suffix": "Sekunden",
+            "minimum": 15
+        }
+    ],
+    "actions": [
+        {
+            "type": "Button",
+            "caption": "Jetzt abrufen",
+            "onClick": "MOVA_Poll($id);"
+        },
+        {
+            "type": "Label",
+            "caption": "Tipp: Geräte-ID bei mehreren Geräten nötig. Sie steht im Symcon-Log nach dem ersten Abruf bzw. im Python-Tool (poll_status.py --list)."
+        }
+    ],
+    "status": [
+        { "code": 102, "icon": "active", "caption": "Aktiv" },
+        { "code": 104, "icon": "inactive", "caption": "Bitte E-Mail und Passwort eintragen" },
+        { "code": 200, "icon": "error", "caption": "Allgemeiner Fehler – siehe Log" },
+        { "code": 201, "icon": "error", "caption": "Login fehlgeschlagen – Zugangsdaten/Region prüfen" },
+        { "code": 202, "icon": "error", "caption": "Kein Gerät gefunden" },
+        { "code": 203, "icon": "error", "caption": "Status nicht abrufbar (Gerät offline?)" }
+    ]
+}

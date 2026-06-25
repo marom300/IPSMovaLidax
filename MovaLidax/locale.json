@@ -1,0 +1,27 @@
+{
+    "translations": {
+        "de": {
+            "Battery": "Akku",
+            "Status": "Status",
+            "Charging": "Ladezustand",
+            "Online": "Online",
+            "Firmware": "Firmware",
+            "Last Update": "Letzte Aktualisierung",
+            "Kein Status": "Kein Status",
+            "Mäht": "Mäht",
+            "Standby": "Standby",
+            "Pausiert": "Pausiert",
+            "Pause (Fehler)": "Pause (Fehler)",
+            "Rückkehr zur Station": "Rückkehr zur Station",
+            "Lädt": "Lädt",
+            "Kartierung": "Kartierung",
+            "Vollständig geladen": "Vollständig geladen",
+            "Update": "Update",
+            "Nicht angedockt": "Nicht angedockt",
+            "Lädt nicht": "Lädt nicht",
+            "Geladen": "Geladen",
+            "Rückkehr zum Laden": "Rückkehr zum Laden",
+            "Pausiert (Temperatur)": "Pausiert (Temperatur)"
+        }
+    }
+}

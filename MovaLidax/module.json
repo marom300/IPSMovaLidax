@@ -1,0 +1,16 @@
+{
+    "id": "{3A7C9E12-6D45-4B81-9F23-5E8A1C7B4D60}",
+    "name": "MovaLidax",
+    "type": 3,
+    "vendor": "Eigenentwicklung",
+    "aliases": [
+        "MOVA LiDAX",
+        "MOVA Mähroboter",
+        "LiDAX Ultra 800"
+    ],
+    "url": "",
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "MOVA"
+}
