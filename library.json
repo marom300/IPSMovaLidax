@@ -1,10 +1,12 @@
 {
     "id": "{8F2D6A41-5C3B-4E19-A7D2-1B9E4F6C8A30}",
     "author": "Roman Martin",
-    "url": "",
-    "version": "0.1",
+    "name": "MOVA LiDAX",
+    "url": "https://github.com/marom300/IPSMovaLidax",
+    "version": "1.0",
     "build": 1,
+    "date": 1782345600,
     "compatibility": {
-        "version": "7.0"
+        "minIPS": "7.0"
     }
 }
