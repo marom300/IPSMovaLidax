@@ -98,7 +98,7 @@ class MovaLidax extends IPSModule
                 $this->SetStatus(202);
                 return;
             }
-            $status = $this->getStatus();
+            $status = $this->fetchStatus();
             if ($status === null) {
                 $this->SetStatus(203);
                 return;
@@ -299,7 +299,7 @@ class MovaLidax extends IPSModule
         return $resp['data']['result'];
     }
 
-    private function getStatus(): ?array
+    private function fetchStatus(): ?array
     {
         // Kern-Properties des LiDAX: status 2:1, battery 3:1, charging 3:2
         $props  = [['siid' => 2, 'piid' => 1], ['siid' => 3, 'piid' => 1], ['siid' => 3, 'piid' => 2]];
