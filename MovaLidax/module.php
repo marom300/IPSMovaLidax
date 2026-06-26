@@ -252,9 +252,20 @@ class MovaLidax extends IPSModule
         }
         $contours = [];
         foreach ($this->mapList($map, 'contours') as $entry) {
-            $cid = $entry[0] ?? null;
-            if (is_array($cid)) {
-                $contours[] = $cid;
+            $cid  = $entry[0] ?? null;
+            $pair = null;
+            if (is_array($cid) && count($cid) === 2) {
+                $pair = [(int) $cid[0], (int) $cid[1]];
+            } elseif (is_string($cid) && strpos($cid, ',') !== false) {
+                $parts = explode(',', $cid);
+                if (count($parts) === 2) {
+                    $pair = [(int) trim($parts[0]), (int) trim($parts[1])];
+                }
+            } elseif (is_int($cid)) {
+                $pair = [$cid, 0];
+            }
+            if ($pair !== null) {
+                $contours[] = $pair;
             }
         }
         $mapId = isset($map['mapIndex']) ? ((int) $map['mapIndex'] + 1) : 1;
