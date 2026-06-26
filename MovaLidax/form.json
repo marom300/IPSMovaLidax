@@ -42,6 +42,11 @@
             "caption": "Abrufintervall",
             "suffix": "Sekunden",
             "minimum": 15
+        },
+        {
+            "type": "CheckBox",
+            "name": "AllowControl",
+            "caption": "Steuerung freischalten (bewegende Befehle: Mähen starten) – mit Vorsicht!"
         }
     ],
     "actions": [
@@ -52,7 +57,26 @@
         },
         {
             "type": "Label",
-            "caption": "Tipp: Geräte-ID bei mehreren Geräten nötig. Sie steht im Symcon-Log nach dem ersten Abruf bzw. im Python-Tool (poll_status.py --list)."
+            "caption": "— Steuerung —"
+        },
+        {
+            "type": "RowLayout",
+            "items": [
+                { "type": "Button", "caption": "Gesamtes Gebiet", "onClick": "MOVA_StartAll($id);" },
+                { "type": "Button", "caption": "Begrenzung", "onClick": "MOVA_StartEdge($id);" },
+                { "type": "Button", "caption": "Pause", "onClick": "MOVA_MowerPause($id);" },
+                { "type": "Button", "caption": "Stop", "onClick": "MOVA_MowerStop($id);" },
+                { "type": "Button", "caption": "Zur Station", "onClick": "MOVA_MowerDock($id);" }
+            ]
+        },
+        {
+            "type": "Button",
+            "caption": "Karte / Zonen laden",
+            "onClick": "MOVA_LoadMap($id);"
+        },
+        {
+            "type": "Label",
+            "caption": "Zonen-Mähen: nach 'Karte / Zonen laden' die Variable 'Mähzone' im Objektbaum/WebFront auf die gewünschte Zone setzen. 'Gesamtes Gebiet' und 'Begrenzung' brauchen die Freischaltung oben."
         }
     ],
     "status": [

@@ -21,7 +21,21 @@
             "Lädt nicht": "Lädt nicht",
             "Geladen": "Geladen",
             "Rückkehr zum Laden": "Rückkehr zum Laden",
-            "Pausiert (Temperatur)": "Pausiert (Temperatur)"
+            "Pausiert (Temperatur)": "Pausiert (Temperatur)",
+            "Command": "Befehl",
+            "Mow zone": "Mähzone",
+            "Zone": "Zone",
+            "Mow whole area": "Gesamtes Gebiet mähen",
+            "Mow edge": "Begrenzung mähen",
+            "Stop": "Stop",
+            "Return to dock": "Zur Station (Dock)",
+            "Pause": "Pause",
+            "No contours loaded — please load the map first.": "Keine Konturen geladen — bitte zuerst 'Karte / Zonen laden'.",
+            "Not connected.": "Nicht verbunden.",
+            "No map data received.": "Keine Kartendaten erhalten.",
+            "Could not parse map.": "Karte konnte nicht gelesen werden.",
+            "Map loaded: %d zones, %d contours.": "Karte geladen: %d Zonen, %d Konturen.",
+            "Control is locked. Enable \"Allow control\" in the configuration first.": "Steuerung gesperrt. Bitte zuerst 'Steuerung freischalten' in der Konfiguration aktivieren."
         }
     }
 }

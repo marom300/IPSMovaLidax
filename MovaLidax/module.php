@@ -37,6 +37,7 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyString('AccountType', 'mova');
         $this->RegisterPropertyString('DeviceID', '');
         $this->RegisterPropertyInteger('Interval', 60);
+        $this->RegisterPropertyBoolean('AllowControl', false);
 
         // Token-/Geräte-Cache
         $this->RegisterAttributeString('AccessToken', '');
@@ -49,6 +50,10 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeString('Model', '');
         $this->RegisterAttributeString('Uid', '');
         $this->RegisterAttributeString('Ver', '');
+        // Karten-Metadaten für Zonen-/Begrenzungs-Mähen
+        $this->RegisterAttributeString('MapZones', '[]');     // [{id,name}]
+        $this->RegisterAttributeString('MapContours', '[]');  // [[id,sub], ...]
+        $this->RegisterAttributeInteger('MapId', 1);
 
         $this->RegisterTimer('Poll', 0, 'MOVA_Poll($_IPS[\'TARGET\']);');
     }
@@ -65,6 +70,12 @@ class MovaLidax extends IPSModule
         $this->RegisterVariableBoolean('Online', $this->Translate('Online'), '', 40);
         $this->RegisterVariableString('Firmware', $this->Translate('Firmware'), '', 50);
         $this->RegisterVariableInteger('LastUpdate', $this->Translate('Last Update'), '~UnixTimestamp', 60);
+
+        // Steuer-Variablen (im WebFront/Tile bedienbar)
+        $this->RegisterVariableInteger('Action', $this->Translate('Command'), 'MOVA.Action', 70);
+        $this->EnableAction('Action');
+        $this->RegisterVariableInteger('Zone', $this->Translate('Mow zone'), 'MOVA.Zones', 80);
+        $this->EnableAction('Zone');
 
         // Bei Konfigurationsänderung Geräte-Cache verwerfen (Region/Konto könnte sich geändert haben)
         $this->WriteAttributeString('Did', '');
@@ -122,6 +133,247 @@ class MovaLidax extends IPSModule
         } catch (Exception $e) {
             $this->LogMessage('Poll-Fehler: ' . $e->getMessage(), KL_ERROR);
             $this->SetStatus(200);
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Steuerung (Stufe 2) — bewegende Befehle hinter Sicherheitsschalter
+    // ------------------------------------------------------------------ //
+    public function RequestAction($Ident, $Value)
+    {
+        switch ($Ident) {
+            case 'Action':
+                $this->dispatchAction((int) $Value);
+                $this->SetValue('Action', 0);
+                break;
+            case 'Zone':
+                $this->SetValue('Zone', (int) $Value);
+                if ((int) $Value > 0) {
+                    $this->StartZone((int) $Value);
+                }
+                break;
+        }
+    }
+
+    private function dispatchAction(int $value): void
+    {
+        switch ($value) {
+            case 1:  $this->StartAll();   break;
+            case 2:  $this->StartEdge();  break;
+            case 10: $this->MowerStop();  break;
+            case 11: $this->MowerDock();  break;
+            case 12: $this->MowerPause(); break;
+        }
+    }
+
+    /** Gesamtes Gebiet mähen (Action 2:50, Opcode 100). */
+    public function StartAll(): bool
+    {
+        if (!$this->requireControl()) {
+            return false;
+        }
+        $mapId = $this->ReadAttributeInteger('MapId');
+        return $this->mowTask('Gesamtes Gebiet',
+            ['m' => 'a', 'p' => 0, 'o' => 100, 'd' => ['region_id' => [$mapId], 'area_id' => []]]);
+    }
+
+    /** Begrenzung/Rand mähen (Opcode 101) — braucht geladene Konturen. */
+    public function StartEdge(): bool
+    {
+        if (!$this->requireControl()) {
+            return false;
+        }
+        $contours = json_decode($this->ReadAttributeString('MapContours'), true);
+        if (!is_array($contours) || count($contours) === 0) {
+            echo $this->Translate('No contours loaded — please load the map first.');
+            return false;
+        }
+        return $this->mowTask('Begrenzung',
+            ['m' => 'a', 'p' => 0, 'o' => 101, 'd' => ['edge' => $contours]]);
+    }
+
+    /** Einzelne Zone mähen (Opcode 102). */
+    public function StartZone(int $ZoneID): bool
+    {
+        if (!$this->requireControl()) {
+            return false;
+        }
+        if ($ZoneID <= 0) {
+            return false;
+        }
+        return $this->mowTask('Zone ' . $ZoneID,
+            ['m' => 'a', 'p' => 0, 'o' => 102, 'd' => ['region' => [$ZoneID]]]);
+    }
+
+    // Stop/Dock/Pause sind "beruhigende" Befehle -> ohne Freischalt-Pflicht.
+    public function MowerStop(): bool
+    {
+        return $this->simpleAction(5, 2, 'Stop');
+    }
+
+    public function MowerDock(): bool
+    {
+        return $this->simpleAction(5, 3, 'Dock');
+    }
+
+    public function MowerPause(): bool
+    {
+        return $this->simpleAction(5, 4, 'Pause');
+    }
+
+    /** Karten-Metadaten (Zonen + Konturen) für Zonen-/Begrenzungs-Mähen laden. */
+    public function LoadMap(): bool
+    {
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            echo $this->Translate('Not connected.');
+            return false;
+        }
+        $resp = $this->apiRequest('dreame-user-iot/iotuserdata/getDeviceData',
+            ['did' => $this->ReadAttributeString('Did'), 'model' => []]);
+        $data = (is_array($resp) && isset($resp['data']) && is_array($resp['data'])) ? $resp['data'] : null;
+        if ($data === null) {
+            echo $this->Translate('No map data received.');
+            return false;
+        }
+        $map = $this->decodeMap($data);
+        if ($map === null) {
+            echo $this->Translate('Could not parse map.');
+            return false;
+        }
+
+        $zones = [];
+        foreach ($this->mapList($map, 'mowingAreas') as $entry) {
+            $zid  = (int) ($entry[0] ?? 0);
+            $name = (is_array($entry[1] ?? null)) ? (string) ($entry[1]['name'] ?? '') : '';
+            if ($name === '') {
+                $name = $this->Translate('Zone') . ' ' . $zid;
+            }
+            $zones[] = ['id' => $zid, 'name' => $name];
+        }
+        $contours = [];
+        foreach ($this->mapList($map, 'contours') as $entry) {
+            $cid = $entry[0] ?? null;
+            if (is_array($cid)) {
+                $contours[] = $cid;
+            }
+        }
+        $mapId = isset($map['mapIndex']) ? ((int) $map['mapIndex'] + 1) : 1;
+
+        $this->WriteAttributeString('MapZones', json_encode($zones));
+        $this->WriteAttributeString('MapContours', json_encode($contours));
+        $this->WriteAttributeInteger('MapId', $mapId);
+        $this->rebuildZoneProfile($zones);
+
+        $msg = sprintf($this->Translate('Map loaded: %d zones, %d contours.'), count($zones), count($contours));
+        $this->LogMessage($msg, KL_NOTIFY);
+        echo $msg;
+        return true;
+    }
+
+    private function requireControl(): bool
+    {
+        if (!$this->ReadPropertyBoolean('AllowControl')) {
+            echo $this->Translate('Control is locked. Enable "Allow control" in the configuration first.');
+            $this->LogMessage('Bewegender Befehl blockiert (Steuerung nicht freigeschaltet).', KL_WARNING);
+            return false;
+        }
+        return true;
+    }
+
+    private function mowTask(string $label, array $payload)
+    {
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            echo $this->Translate('Not connected.');
+            return false;
+        }
+        $res = $this->sendAction(2, 50, [$payload]);
+        $ok  = $res !== null;
+        $this->LogMessage('Maehbefehl "' . $label . '": ' . ($ok ? 'OK' : 'fehlgeschlagen'),
+            $ok ? KL_NOTIFY : KL_WARNING);
+        return $ok;
+    }
+
+    private function simpleAction(int $siid, int $aiid, string $label)
+    {
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            echo $this->Translate('Not connected.');
+            return false;
+        }
+        $res = $this->sendAction($siid, $aiid, []);
+        $ok  = $res !== null;
+        $this->LogMessage('Befehl "' . $label . '": ' . ($ok ? 'OK' : 'fehlgeschlagen'),
+            $ok ? KL_NOTIFY : KL_WARNING);
+        return $ok;
+    }
+
+    private function sendAction(int $siid, int $aiid, array $in)
+    {
+        $did = $this->ReadAttributeString('Did');
+        $id  = random_int(1, 1000000);
+        $params  = ['did' => $did, 'siid' => $siid, 'aiid' => $aiid, 'in' => $in];
+        $payload = [
+            'did'  => $did,
+            'id'   => $id,
+            'data' => ['did' => $did, 'id' => $id, 'method' => 'action', 'params' => $params],
+        ];
+        $resp = $this->apiRequest($this->sendCommandPath(), $payload);
+        if (!is_array($resp) || ($resp['code'] ?? null) === 80001) {
+            return null;
+        }
+        return $resp['data']['result'] ?? null;
+    }
+
+    // --- Karten-JSON dekodieren (nur Metadaten: Zonen/Konturen) ---
+    private function decodeMap(array $batch): ?array
+    {
+        $chunks = [];
+        foreach ($batch as $k => $v) {
+            if (preg_match('/^MAP\.(\d+)$/', (string) $k, $m)) {
+                $chunks[(int) $m[1]] = (string) $v;
+            }
+        }
+        if (count($chunks) === 0) {
+            return null;
+        }
+        ksort($chunks);
+        $raw  = implode('', $chunks);
+        $info = $batch['MAP.info'] ?? '';
+        if (is_string($info) && ctype_digit($info)) {
+            $len = (int) $info;
+            if ($len > 0 && $len < strlen($raw)) {
+                $raw = substr($raw, 0, $len);
+            }
+        }
+        $arr = json_decode(trim($raw), true);
+        if (!is_array($arr) || count($arr) === 0) {
+            return null;
+        }
+        $first = $arr[0];
+        if (is_string($first)) {
+            $m = json_decode($first, true);
+            return is_array($m) ? $m : null;
+        }
+        return is_array($first) ? $first : null;
+    }
+
+    private function mapList(array $map, string $key): array
+    {
+        $node = $map[$key] ?? null;
+        if (is_array($node) && ($node['dataType'] ?? '') === 'Map'
+            && isset($node['value']) && is_array($node['value'])) {
+            return $node['value'];
+        }
+        return [];
+    }
+
+    private function rebuildZoneProfile(array $zones): void
+    {
+        if (!IPS_VariableProfileExists('MOVA.Zones')) {
+            IPS_CreateVariableProfile('MOVA.Zones', VARIABLETYPE_INTEGER);
+        }
+        IPS_SetVariableProfileAssociation('MOVA.Zones', 0, '–', '', -1);
+        foreach ($zones as $z) {
+            IPS_SetVariableProfileAssociation('MOVA.Zones', (int) $z['id'], (string) $z['name'], '', -1);
         }
     }
 
@@ -374,6 +626,24 @@ class MovaLidax extends IPSModule
             foreach (self::CHARGING_MAP as $value => $text) {
                 IPS_SetVariableProfileAssociation('MOVA.Charging', $value, $this->Translate($text), '', -1);
             }
+        }
+        if (!IPS_VariableProfileExists('MOVA.Action')) {
+            IPS_CreateVariableProfile('MOVA.Action', VARIABLETYPE_INTEGER);
+            $actions = [
+                0  => '–',
+                1  => $this->Translate('Mow whole area'),
+                2  => $this->Translate('Mow edge'),
+                10 => $this->Translate('Stop'),
+                11 => $this->Translate('Return to dock'),
+                12 => $this->Translate('Pause'),
+            ];
+            foreach ($actions as $value => $text) {
+                IPS_SetVariableProfileAssociation('MOVA.Action', $value, $text, '', -1);
+            }
+        }
+        if (!IPS_VariableProfileExists('MOVA.Zones')) {
+            IPS_CreateVariableProfile('MOVA.Zones', VARIABLETYPE_INTEGER);
+            IPS_SetVariableProfileAssociation('MOVA.Zones', 0, '–', '', -1);
         }
     }
 }
