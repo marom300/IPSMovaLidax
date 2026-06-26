@@ -29,6 +29,8 @@
             "Mow edge": "Begrenzung mähen",
             "Stop": "Stop",
             "Return to dock": "Zur Station (Dock)",
+            "Dock (keep task)": "Andocken (Aufgabe behalten)",
+            "Cancel & return to dock": "Abbrechen & zur Station",
             "Pause": "Pause",
             "No contours loaded — please load the map first.": "Keine Konturen geladen — bitte zuerst 'Karte / Zonen laden'.",
             "Not connected.": "Nicht verbunden.",

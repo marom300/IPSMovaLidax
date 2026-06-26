@@ -163,6 +163,7 @@ class MovaLidax extends IPSModule
             case 10: $this->MowerStop();  break;
             case 11: $this->MowerDock();  break;
             case 12: $this->MowerPause(); break;
+            case 13: $this->ReturnHome(); break;
         }
     }
 
@@ -219,6 +220,18 @@ class MovaLidax extends IPSModule
     public function MowerPause(): bool
     {
         return $this->simpleAction(5, 4, 'Pause');
+    }
+
+    /**
+     * Aufgabe abbrechen und heimfahren: STOP (beendet die Mähaufgabe),
+     * kurze Pause, dann DOCK (zur Station). So bleibt keine Aufgabe offen.
+     */
+    public function ReturnHome(): bool
+    {
+        $stop = $this->simpleAction(5, 2, 'Stop (Aufgabe beenden)');
+        IPS_Sleep(1500);
+        $dock = $this->simpleAction(5, 3, 'Dock');
+        return $stop && $dock;
     }
 
     /** Karten-Metadaten (Zonen + Konturen) für Zonen-/Begrenzungs-Mähen laden. */
@@ -645,8 +658,9 @@ class MovaLidax extends IPSModule
                 1  => $this->Translate('Mow whole area'),
                 2  => $this->Translate('Mow edge'),
                 10 => $this->Translate('Stop'),
-                11 => $this->Translate('Return to dock'),
+                11 => $this->Translate('Dock (keep task)'),
                 12 => $this->Translate('Pause'),
+                13 => $this->Translate('Cancel & return to dock'),
             ];
             foreach ($actions as $value => $text) {
                 IPS_SetVariableProfileAssociation('MOVA.Action', $value, $text, '', -1);

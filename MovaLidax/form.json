@@ -66,7 +66,8 @@
                 { "type": "Button", "caption": "Begrenzung", "onClick": "MOVA_StartEdge($id);" },
                 { "type": "Button", "caption": "Pause", "onClick": "MOVA_MowerPause($id);" },
                 { "type": "Button", "caption": "Stop", "onClick": "MOVA_MowerStop($id);" },
-                { "type": "Button", "caption": "Zur Station", "onClick": "MOVA_MowerDock($id);" }
+                { "type": "Button", "caption": "Andocken", "onClick": "MOVA_MowerDock($id);" },
+                { "type": "Button", "caption": "Stopp & Heim", "onClick": "MOVA_ReturnHome($id);" }
             ]
         },
         {
