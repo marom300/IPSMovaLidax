@@ -38,6 +38,8 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyString('DeviceID', '');
         $this->RegisterPropertyInteger('Interval', 60);
         $this->RegisterPropertyBoolean('AllowControl', false);
+        $this->RegisterPropertyBoolean('MapTransparent', true);
+        $this->RegisterPropertyInteger('MapBackground', 0xFFFFFF);
 
         // Token-/Geräte-Cache
         $this->RegisterAttributeString('AccessToken', '');
@@ -444,35 +446,64 @@ class MovaLidax extends IPSModule
         $h = max($maxy - $miny, 1);
         $target = 900;
         $pad = 24;
+        $header = 42; // Platz oben für die Legende
         $scale = ($target - 2 * $pad) / max($w, $h);
         $width = $w * $scale + 2 * $pad;
-        $height = $h * $scale + 2 * $pad;
+        $height = $header + $h * $scale + 2 * $pad;
 
-        $points = function (array $poly) use ($minx, $maxy, $scale, $pad) {
+        $points = function (array $poly) use ($minx, $maxy, $scale, $pad, $header) {
             $s = [];
             foreach ($poly as $pt) {
                 $px = $pad + ($pt[0] - $minx) * $scale;
-                $py = $pad + ($maxy - $pt[1]) * $scale; // Y spiegeln (SVG: y nach unten)
+                $py = $header + $pad + ($maxy - $pt[1]) * $scale; // Y spiegeln, unter der Legende
                 $s[] = round($px, 1) . ',' . round($py, 1);
             }
             return implode(' ', $s);
         };
 
+        // Hintergrund + adaptive Schrift-/Konturfarbe bestimmen
+        if ($this->ReadPropertyBoolean('MapTransparent')) {
+            $bg = 'transparent';
+            $dark = true; // transparent -> meist dunkle View -> helle Schrift
+        } else {
+            $c = $this->ReadPropertyInteger('MapBackground');
+            $bg = sprintf('#%06X', $c & 0xFFFFFF);
+            $lum = 0.2126 * (($c >> 16) & 0xFF) + 0.7152 * (($c >> 8) & 0xFF) + 0.0722 * ($c & 0xFF);
+            $dark = $lum < 140;
+        }
+        $textCol    = $dark ? '#e8eee5' : '#33372c';
+        $contourCol = $dark ? '#9ccc79' : '#2f6d24';
+
         $svg = '<svg viewBox="0 0 ' . round($width) . ' ' . round($height) . '" '
              . 'xmlns="http://www.w3.org/2000/svg" '
-             . 'style="width:100%;height:auto;max-height:70vh;background:#f7f7f2;border-radius:8px">';
+             . 'style="width:100%;height:auto;max-height:75vh;background:' . $bg . ';border-radius:8px">';
+
+        // Wiesenzonen
         foreach ($zones as $poly) {
             $svg .= '<polygon points="' . $points($poly) . '" fill="#cde6c0" fill-opacity="0.9" '
                   . 'stroke="#4f9a3f" stroke-width="1.5" stroke-linejoin="round"/>';
         }
+        // Sperrzonen
         foreach ($forbidden as $poly) {
             $svg .= '<polygon points="' . $points($poly) . '" fill="#e74c3c" fill-opacity="0.30" '
-                  . 'stroke="#b53224" stroke-width="1.5"/>';
+                  . 'stroke="#b53224" stroke-width="1.5" stroke-linejoin="round"/>';
         }
+        // Außen-/Zonenkontur
         foreach ($contours as $poly) {
-            $svg .= '<polyline points="' . $points($poly) . '" fill="none" stroke="#2f6d24" '
+            $svg .= '<polyline points="' . $points($poly) . '" fill="none" stroke="' . $contourCol . '" '
                   . 'stroke-width="2.5" stroke-linejoin="round"/>';
         }
+
+        // Legende (oben)
+        $svg .= '<g font-family="Segoe UI, Arial, sans-serif">'
+              . '<rect x="14" y="13" width="14" height="14" rx="3" fill="#cde6c0" stroke="#4f9a3f"/>'
+              . '<text x="34" y="24" font-size="13" fill="' . $textCol . '">Wiese</text>'
+              . '<rect x="104" y="13" width="14" height="14" rx="3" fill="#e74c3c" fill-opacity="0.3" stroke="#b53224"/>'
+              . '<text x="124" y="24" font-size="13" fill="' . $textCol . '">Sperrzone</text>'
+              . '<rect x="214" y="19" width="16" height="3" rx="1.5" fill="' . $contourCol . '"/>'
+              . '<text x="236" y="24" font-size="13" fill="' . $textCol . '">Grenze</text>'
+              . '</g>';
+
         $svg .= '</svg>';
         return $svg;
     }

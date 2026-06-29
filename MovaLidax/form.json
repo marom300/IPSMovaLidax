@@ -47,6 +47,16 @@
             "type": "CheckBox",
             "name": "AllowControl",
             "caption": "Steuerung freischalten (bewegende Befehle: Mähen starten) – mit Vorsicht!"
+        },
+        {
+            "type": "CheckBox",
+            "name": "MapTransparent",
+            "caption": "Kartenhintergrund transparent (passt sich der View an)"
+        },
+        {
+            "type": "SelectColor",
+            "name": "MapBackground",
+            "caption": "Hintergrundfarbe (nur falls nicht transparent)"
         }
     ],
     "actions": [
