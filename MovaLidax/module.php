@@ -420,21 +420,53 @@ class MovaLidax extends IPSModule
         return $out;
     }
 
-    /** Baut aus dem Karten-JSON ein responsives SVG (Zonen/Sperrzonen/Kontur). */
+    /** Zonen mit Name + Pfad (für Einfärbung und Beschriftung). */
+    private function extractZones(array $map): array
+    {
+        $out = [];
+        foreach ($this->mapList($map, 'mowingAreas') as $entry) {
+            $id   = (int) ($entry[0] ?? 0);
+            $data = $entry[1] ?? null;
+            if (is_array($data) && isset($data['path']) && is_array($data['path'])) {
+                $coords = [];
+                foreach ($data['path'] as $p) {
+                    if (is_array($p) && isset($p['x'], $p['y'])) {
+                        $coords[] = [(int) $p['x'], (int) $p['y']];
+                    }
+                }
+                if (count($coords) >= 2) {
+                    $name = (string) ($data['name'] ?? '');
+                    if ($name === '') {
+                        $name = 'Zone ' . $id;
+                    }
+                    $out[] = ['name' => $name, 'path' => $coords];
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** Baut aus dem Karten-JSON ein responsives SVG (Zonen farbig + beschriftet). */
     private function buildMapSvg(array $map): string
     {
-        $zones     = $this->extractPaths($map, 'mowingAreas');
+        $zones     = $this->extractZones($map);
         $forbidden = $this->extractPaths($map, 'forbiddenAreas');
         $contours  = $this->extractPaths($map, 'contours');
 
-        $all = array_merge($zones, $forbidden, $contours);
-        if (count($all) === 0) {
+        $allPolys = $forbidden;
+        foreach ($zones as $z) {
+            $allPolys[] = $z['path'];
+        }
+        foreach ($contours as $c) {
+            $allPolys[] = $c;
+        }
+        if (count($allPolys) === 0) {
             return '';
         }
 
         $minx = $miny = PHP_INT_MAX;
         $maxx = $maxy = PHP_INT_MIN;
-        foreach ($all as $poly) {
+        foreach ($allPolys as $poly) {
             foreach ($poly as $pt) {
                 $minx = min($minx, $pt[0]);
                 $maxx = max($maxx, $pt[0]);
@@ -451,20 +483,25 @@ class MovaLidax extends IPSModule
         $width = $w * $scale + 2 * $pad;
         $height = $header + $h * $scale + 2 * $pad;
 
-        $points = function (array $poly) use ($minx, $maxy, $scale, $pad, $header) {
+        $tx = function (array $pt) use ($minx, $maxy, $scale, $pad, $header) {
+            return [
+                $pad + ($pt[0] - $minx) * $scale,
+                $header + $pad + ($maxy - $pt[1]) * $scale, // Y spiegeln, unter der Legende
+            ];
+        };
+        $points = function (array $poly) use ($tx) {
             $s = [];
             foreach ($poly as $pt) {
-                $px = $pad + ($pt[0] - $minx) * $scale;
-                $py = $header + $pad + ($maxy - $pt[1]) * $scale; // Y spiegeln, unter der Legende
-                $s[] = round($px, 1) . ',' . round($py, 1);
+                $p = $tx($pt);
+                $s[] = round($p[0], 1) . ',' . round($p[1], 1);
             }
             return implode(' ', $s);
         };
 
-        // Hintergrund + adaptive Schrift-/Konturfarbe bestimmen
+        // Hintergrund + adaptive Schrift-/Konturfarbe
         if ($this->ReadPropertyBoolean('MapTransparent')) {
             $bg = 'transparent';
-            $dark = true; // transparent -> meist dunkle View -> helle Schrift
+            $dark = true;
         } else {
             $c = $this->ReadPropertyInteger('MapBackground');
             $bg = sprintf('#%06X', $c & 0xFFFFFF);
@@ -474,34 +511,54 @@ class MovaLidax extends IPSModule
         $textCol    = $dark ? '#e8eee5' : '#33372c';
         $contourCol = $dark ? '#9ccc79' : '#2f6d24';
 
+        // Farbpalette für die Zonen (unterscheidbar)
+        $palette = ['#cde6c0', '#a8d8b9', '#dbe7a6', '#bcddee', '#e8d6a8', '#d3c2e0', '#f0c9b8'];
+
         $svg = '<svg viewBox="0 0 ' . round($width) . ' ' . round($height) . '" '
-             . 'xmlns="http://www.w3.org/2000/svg" '
+             . 'xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif" '
              . 'style="width:100%;height:auto;max-height:75vh;background:' . $bg . ';border-radius:8px">';
 
-        // Wiesenzonen
-        foreach ($zones as $poly) {
-            $svg .= '<polygon points="' . $points($poly) . '" fill="#cde6c0" fill-opacity="0.9" '
-                  . 'stroke="#4f9a3f" stroke-width="1.5" stroke-linejoin="round"/>';
+        // Zonen eingefärbt
+        $i = 0;
+        foreach ($zones as $z) {
+            $fill = $palette[$i % count($palette)];
+            $i++;
+            $svg .= '<polygon points="' . $points($z['path']) . '" fill="' . $fill . '" fill-opacity="0.92" '
+                  . 'stroke="#4f9a3f" stroke-width="1.2" stroke-linejoin="round"/>';
         }
         // Sperrzonen
         foreach ($forbidden as $poly) {
             $svg .= '<polygon points="' . $points($poly) . '" fill="#e74c3c" fill-opacity="0.30" '
                   . 'stroke="#b53224" stroke-width="1.5" stroke-linejoin="round"/>';
         }
-        // Außen-/Zonenkontur
+        // Kontur
         foreach ($contours as $poly) {
             $svg .= '<polyline points="' . $points($poly) . '" fill="none" stroke="' . $contourCol . '" '
                   . 'stroke-width="2.5" stroke-linejoin="round"/>';
         }
+        // Zonen-Namen im Schwerpunkt (mit weißem Halo für Lesbarkeit)
+        foreach ($zones as $z) {
+            $cx = 0;
+            $cy = 0;
+            $n = count($z['path']);
+            foreach ($z['path'] as $pt) {
+                $cx += $pt[0];
+                $cy += $pt[1];
+            }
+            $ctr = $tx([$cx / $n, $cy / $n]);
+            $label = htmlspecialchars($z['name'], ENT_QUOTES);
+            $svg .= '<text x="' . round($ctr[0], 1) . '" y="' . round($ctr[1], 1) . '" '
+                  . 'font-size="13" font-weight="600" fill="#243018" text-anchor="middle" '
+                  . 'paint-order="stroke" stroke="#ffffff" stroke-width="3" stroke-opacity="0.75">'
+                  . $label . '</text>';
+        }
 
         // Legende (oben)
-        $svg .= '<g font-family="Segoe UI, Arial, sans-serif">'
-              . '<rect x="14" y="13" width="14" height="14" rx="3" fill="#cde6c0" stroke="#4f9a3f"/>'
-              . '<text x="34" y="24" font-size="13" fill="' . $textCol . '">Wiese</text>'
-              . '<rect x="104" y="13" width="14" height="14" rx="3" fill="#e74c3c" fill-opacity="0.3" stroke="#b53224"/>'
-              . '<text x="124" y="24" font-size="13" fill="' . $textCol . '">Sperrzone</text>'
-              . '<rect x="214" y="19" width="16" height="3" rx="1.5" fill="' . $contourCol . '"/>'
-              . '<text x="236" y="24" font-size="13" fill="' . $textCol . '">Grenze</text>'
+        $svg .= '<g>'
+              . '<rect x="14" y="13" width="14" height="14" rx="3" fill="#e74c3c" fill-opacity="0.3" stroke="#b53224"/>'
+              . '<text x="34" y="24" font-size="13" fill="' . $textCol . '">Sperrzone</text>'
+              . '<rect x="120" y="19" width="16" height="3" rx="1.5" fill="' . $contourCol . '"/>'
+              . '<text x="142" y="24" font-size="13" fill="' . $textCol . '">Grenze</text>'
               . '</g>';
 
         $svg .= '</svg>';
