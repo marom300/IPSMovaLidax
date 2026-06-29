@@ -76,6 +76,7 @@ class MovaLidax extends IPSModule
         $this->EnableAction('Action');
         $this->RegisterVariableInteger('Zone', $this->Translate('Mow zone'), 'MOVA.Zones', 80);
         $this->EnableAction('Zone');
+        $this->RegisterVariableString('Map', $this->Translate('Map'), '~HTMLBox', 90);
 
         // Bei Konfigurationsänderung Geräte-Cache verwerfen (Region/Konto könnte sich geändert haben)
         $this->WriteAttributeString('Did', '');
@@ -288,6 +289,12 @@ class MovaLidax extends IPSModule
         $this->WriteAttributeInteger('MapId', $mapId);
         $this->rebuildZoneProfile($zones);
 
+        // Karte als SVG rendern und in die HTMLBox-Variable schreiben
+        $svg = $this->buildMapSvg($map);
+        if ($svg !== '') {
+            $this->SetValue('Map', $svg);
+        }
+
         $msg = sprintf($this->Translate('Map loaded: %d zones, %d contours.'), count($zones), count($contours));
         $this->LogMessage($msg, KL_NOTIFY);
         echo $msg;
@@ -388,6 +395,86 @@ class MovaLidax extends IPSModule
             return $node['value'];
         }
         return [];
+    }
+
+    /** Pfad-Koordinatenlisten aus einem Karten-Abschnitt (Polygone). */
+    private function extractPaths(array $map, string $key): array
+    {
+        $out = [];
+        foreach ($this->mapList($map, $key) as $entry) {
+            $data = $entry[1] ?? null;
+            if (is_array($data) && isset($data['path']) && is_array($data['path'])) {
+                $coords = [];
+                foreach ($data['path'] as $p) {
+                    if (is_array($p) && isset($p['x'], $p['y'])) {
+                        $coords[] = [(int) $p['x'], (int) $p['y']];
+                    }
+                }
+                if (count($coords) >= 2) {
+                    $out[] = $coords;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** Baut aus dem Karten-JSON ein responsives SVG (Zonen/Sperrzonen/Kontur). */
+    private function buildMapSvg(array $map): string
+    {
+        $zones     = $this->extractPaths($map, 'mowingAreas');
+        $forbidden = $this->extractPaths($map, 'forbiddenAreas');
+        $contours  = $this->extractPaths($map, 'contours');
+
+        $all = array_merge($zones, $forbidden, $contours);
+        if (count($all) === 0) {
+            return '';
+        }
+
+        $minx = $miny = PHP_INT_MAX;
+        $maxx = $maxy = PHP_INT_MIN;
+        foreach ($all as $poly) {
+            foreach ($poly as $pt) {
+                $minx = min($minx, $pt[0]);
+                $maxx = max($maxx, $pt[0]);
+                $miny = min($miny, $pt[1]);
+                $maxy = max($maxy, $pt[1]);
+            }
+        }
+        $w = max($maxx - $minx, 1);
+        $h = max($maxy - $miny, 1);
+        $target = 900;
+        $pad = 24;
+        $scale = ($target - 2 * $pad) / max($w, $h);
+        $width = $w * $scale + 2 * $pad;
+        $height = $h * $scale + 2 * $pad;
+
+        $points = function (array $poly) use ($minx, $maxy, $scale, $pad) {
+            $s = [];
+            foreach ($poly as $pt) {
+                $px = $pad + ($pt[0] - $minx) * $scale;
+                $py = $pad + ($maxy - $pt[1]) * $scale; // Y spiegeln (SVG: y nach unten)
+                $s[] = round($px, 1) . ',' . round($py, 1);
+            }
+            return implode(' ', $s);
+        };
+
+        $svg = '<svg viewBox="0 0 ' . round($width) . ' ' . round($height) . '" '
+             . 'xmlns="http://www.w3.org/2000/svg" '
+             . 'style="width:100%;height:auto;max-height:70vh;background:#f7f7f2;border-radius:8px">';
+        foreach ($zones as $poly) {
+            $svg .= '<polygon points="' . $points($poly) . '" fill="#cde6c0" fill-opacity="0.9" '
+                  . 'stroke="#4f9a3f" stroke-width="1.5" stroke-linejoin="round"/>';
+        }
+        foreach ($forbidden as $poly) {
+            $svg .= '<polygon points="' . $points($poly) . '" fill="#e74c3c" fill-opacity="0.30" '
+                  . 'stroke="#b53224" stroke-width="1.5"/>';
+        }
+        foreach ($contours as $poly) {
+            $svg .= '<polyline points="' . $points($poly) . '" fill="none" stroke="#2f6d24" '
+                  . 'stroke-width="2.5" stroke-linejoin="round"/>';
+        }
+        $svg .= '</svg>';
+        return $svg;
     }
 
     private function rebuildZoneProfile(array $zones): void
