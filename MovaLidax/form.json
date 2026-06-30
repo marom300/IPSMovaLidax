@@ -63,6 +63,15 @@
             "caption": "Karten-Darstellung (Größe & Schrift)",
             "items": [
                 {
+                    "type": "Select",
+                    "name": "DashboardLayout",
+                    "caption": "Dashboard-Layout (HTML-Seite)",
+                    "options": [
+                        { "caption": "Steuerung rechts neben der Karte", "value": "right" },
+                        { "caption": "Steuerung unter der Karte", "value": "bottom" }
+                    ]
+                },
+                {
                     "type": "NumberSpinner",
                     "name": "MapMaxHeight",
                     "caption": "Max. Höhe der Karte",

@@ -43,6 +43,7 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyInteger('LabelSize', 26);
         $this->RegisterPropertyInteger('LegendSize', 17);
         $this->RegisterPropertyInteger('MapMaxHeight', 75);
+        $this->RegisterPropertyString('DashboardLayout', 'right'); // right | bottom
 
         // Token-/Geräte-Cache
         $this->RegisterAttributeString('AccessToken', '');
@@ -808,6 +809,7 @@ class MovaLidax extends IPSModule
             'map'      => (string) $this->GetValue('Map'),
             'zones'    => json_decode($this->ReadAttributeString('MapZones'), true) ?: [],
             'allow'    => (bool) $this->ReadPropertyBoolean('AllowControl'),
+            'layout'   => $this->ReadPropertyString('DashboardLayout'),
         ];
     }
 
@@ -832,6 +834,11 @@ body{margin:0;font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#1c1f23;
 .card .val{font-size:22px;font-weight:600;margin-top:4px}
 .bat{height:8px;border-radius:4px;background:#3a3f45;margin-top:8px;overflow:hidden}
 .bat>i{display:block;height:100%;background:#4caf50;transition:width .4s}
+.main{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.main>.left{flex:1 1 360px;min-width:280px}
+.main>.right{flex:0 0 340px}
+.main.bottom{flex-direction:column}
+.main.bottom>.right{width:100%;flex:1 1 auto}
 .map{background:#23272b;border-radius:12px;padding:10px;margin-bottom:14px;text-align:center}
 .sec{background:#272b30;border-radius:12px;padding:14px;margin-bottom:14px}
 .sec h2{font-size:14px;font-weight:600;margin:0 0 10px;color:#c8d0cb}
@@ -854,32 +861,36 @@ select{background:#2f343a;color:#e7ebe6}
   <div class="card"><div class="lbl">Laden</div><div class="val" id="charge">–</div></div>
   <div class="card"><div class="lbl">Firmware</div><div class="val" style="font-size:16px" id="fw">–</div></div>
  </div>
- <div class="map" id="map"></div>
- <div class="sec"><h2>Steuerung</h2>
-  <div class="btns">
-   <button class="go" onclick="cmd('all')">Gesamtes Gebiet</button>
-   <button class="go" onclick="cmd('edge')">Begrenzung</button>
-   <button onclick="cmd('pause')">Pause</button>
-   <button class="stop" onclick="cmd('stop')">Stop</button>
-   <button onclick="cmd('dock')">Andocken</button>
-   <button class="stop" onclick="cmd('home')">Stopp &amp; Heim</button>
+ <div class="main" id="main">
+  <div class="left"><div class="map" id="map"></div></div>
+  <div class="right">
+   <div class="sec"><h2>Steuerung</h2>
+    <div class="btns">
+     <button class="go" onclick="cmd('all')">Gesamtes Gebiet</button>
+     <button class="go" onclick="cmd('edge')">Begrenzung</button>
+     <button onclick="cmd('pause')">Pause</button>
+     <button class="stop" onclick="cmd('stop')">Stop</button>
+     <button onclick="cmd('dock')">Andocken</button>
+     <button class="stop" onclick="cmd('home')">Stopp &amp; Heim</button>
+    </div>
+   </div>
+   <div class="sec"><h2>Zonen mähen</h2>
+    <div class="row">
+     <select id="zoneSel"></select>
+     <button class="go" onclick="cmd('zone&id='+zv())">Diese Zone</button>
+     <button onclick="cmd('queueadd&id='+zv())">+ zur Reihenfolge</button>
+     <button class="go" onclick="cmd('queuerun')">Reihenfolge mähen</button>
+     <button onclick="cmd('queueclear')">Leeren</button>
+    </div>
+    <div class="order" id="order">–</div>
+   </div>
+   <div class="sec"><div class="row">
+     <button onclick="cmd('poll')">Status aktualisieren</button>
+     <button onclick="cmd('loadmap')">Karte neu laden</button>
+     <span id="upd" class="upd"></span>
+   </div></div>
   </div>
  </div>
- <div class="sec"><h2>Zonen mähen</h2>
-  <div class="row">
-   <select id="zoneSel"></select>
-   <button class="go" onclick="cmd('zone&id='+zv())">Diese Zone</button>
-   <button onclick="cmd('queueadd&id='+zv())">+ zur Reihenfolge</button>
-   <button class="go" onclick="cmd('queuerun')">Reihenfolge mähen</button>
-   <button onclick="cmd('queueclear')">Leeren</button>
-  </div>
-  <div class="order" id="order">–</div>
- </div>
- <div class="sec"><div class="row">
-   <button onclick="cmd('poll')">Status aktualisieren</button>
-   <button onclick="cmd('loadmap')">Karte neu laden</button>
-   <span id="upd" class="upd"></span>
- </div></div>
 </div>
 <script>
 function zv(){return document.getElementById('zoneSel').value}
@@ -898,6 +909,7 @@ async function refresh(){
  document.getElementById('onTxt').textContent=d.online?'online':'offline';
  document.getElementById('warn').style.display=d.allow?'none':'block';
  document.getElementById('map').innerHTML=d.map||'';
+ document.getElementById('main').className='main'+(d.layout==='bottom'?' bottom':'');
  var k=JSON.stringify(d.zones||[]);
  if(k!==zonesKey){zonesKey=k;var s=document.getElementById('zoneSel');var cur=s.value;s.innerHTML='';
   (d.zones||[]).forEach(function(z){var o=document.createElement('option');o.value=z.id;o.textContent=z.name;s.appendChild(o)});
