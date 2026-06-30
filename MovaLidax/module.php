@@ -829,39 +829,41 @@ class MovaLidax extends IPSModule
 <title>MOVA LiDAX</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#1c1f23;color:#e7ebe6}
-.wrap{max-width:1100px;margin:0 auto;padding:16px}
-.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.top h1{font-size:20px;font-weight:600;margin:0}
-.dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:6px;background:#888;vertical-align:middle}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#1c1f23;color:#e7ebe6}
+.wrap{height:100%;display:flex;flex-direction:column;padding:1.2vh 1vw;gap:1.1vh}
+.top{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto}
+.top h1{font-size:clamp(15px,2.6vh,20px);font-weight:600;margin:0}
+.dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:6px;background:#888;vertical-align:middle}
 .dot.on{background:#4caf50}.dot.off{background:#e74c3c}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
-.card{background:#272b30;border-radius:12px;padding:12px 14px}
-.card .lbl{font-size:12px;color:#9aa3a0;text-transform:uppercase;letter-spacing:.04em}
-.card .val{font-size:22px;font-weight:600;margin-top:4px}
-.bat{height:8px;border-radius:4px;background:#3a3f45;margin-top:8px;overflow:hidden}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:.8vw;flex:0 0 auto}
+.card{background:#272b30;border-radius:10px;padding:1vh 1vw;min-width:0}
+.card .lbl{font-size:clamp(10px,1.4vh,12px);color:#9aa3a0;text-transform:uppercase;letter-spacing:.04em}
+.card .val{font-size:clamp(15px,2.6vh,22px);font-weight:600;margin-top:.3vh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bat{height:7px;border-radius:4px;background:#3a3f45;margin-top:.7vh;overflow:hidden}
 .bat>i{display:block;height:100%;background:#4caf50;transition:width .4s}
-.main{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
-.main>.left{flex:1 1 360px;min-width:280px}
-.main>.right{flex:0 0 340px}
+.main{flex:1;min-height:0;display:flex;gap:1vw}
 .main.bottom{flex-direction:column}
-.main.bottom>.right{width:100%;flex:1 1 auto}
-.main:not(.bottom)>.right .btns,.main:not(.bottom)>.right .row{flex-direction:column;align-items:stretch}
-.main:not(.bottom)>.right button,.main:not(.bottom)>.right select{width:100%}
-.order div{padding:3px 2px;border-bottom:1px solid #2c3338}
-.order div:last-child{border-bottom:none}
-.map{background:#23272b;border-radius:12px;padding:10px;margin-bottom:14px;text-align:center}
-.sec{background:#272b30;border-radius:12px;padding:14px;margin-bottom:14px}
-.sec h2{font-size:14px;font-weight:600;margin:0 0 10px;color:#c8d0cb}
-.btns,.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-button,select{font:inherit;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
+.main>.left{flex:1 1 auto;min-width:0;min-height:0;display:flex}
+.map{flex:1;min-height:0;background:#23272b;border-radius:12px;padding:.8vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.map svg{max-width:100%!important;max-height:100%!important;width:auto!important;height:auto!important}
+.main>.right{flex:0 0 clamp(210px,26vw,320px);min-height:0;display:flex;flex-direction:column;gap:.9vh;overflow:auto}
+.main.bottom>.right{flex:0 0 auto;width:100%}
+.sec{background:#272b30;border-radius:10px;padding:1vh;display:flex;flex-direction:column;gap:.7vh}
+.sec h2{font-size:clamp(11px,1.6vh,14px);font-weight:600;margin:0;color:#c8d0cb}
+.btns,.row{display:flex;flex-direction:column;gap:.6vh}
+.main.bottom .btns,.main.bottom .row{flex-direction:row;flex-wrap:wrap}
+button,select{font:inherit;border:none;border-radius:9px;padding:clamp(6px,1.2vh,11px) 10px;cursor:pointer;width:100%;font-size:clamp(12px,1.7vh,15px)}
+.main.bottom button,.main.bottom select{width:auto}
 button{background:#3a4047;color:#e7ebe6}button:hover{background:#454c54}
 button.go{background:#3f7d34}button.go:hover{background:#4a9140}
 button.stop{background:#9a3b32}button.stop:hover{background:#b5453a}
 select{background:#2f343a;color:#e7ebe6}
-.order{margin-top:10px;font-size:14px;color:#bcd0b0;background:#23282c;border-radius:8px;padding:8px 10px;min-height:20px}
-.warn{background:#5a3a14;color:#ffd9a0;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:14px;display:none}
-.upd{color:#8a938e;font-size:13px}
+.order{font-size:clamp(12px,1.6vh,14px);color:#bcd0b0;background:#23282c;border-radius:8px;padding:.6vh .8vh}
+.order div{padding:2px 2px;border-bottom:1px solid #2c3338}
+.order div:last-child{border-bottom:none}
+.warn{background:#5a3a14;color:#ffd9a0;border-radius:9px;padding:.7vh 1vh;font-size:clamp(12px,1.6vh,14px);flex:0 0 auto;display:none}
+.upd{color:#8a938e;font-size:clamp(11px,1.4vh,13px)}
 </style></head>
 <body><div class="wrap">
  <div class="top"><h1>MOVA LiDAX</h1><div><span id="dot" class="dot"></span><span id="onTxt">…</span></div></div>
