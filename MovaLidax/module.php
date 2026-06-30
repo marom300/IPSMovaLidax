@@ -798,6 +798,12 @@ class MovaLidax extends IPSModule
     private function buildStatusData(): array
     {
         $lu = (int) $this->GetValue('LastUpdate');
+        $orderItems = [];
+        $i = 1;
+        foreach ($this->getQueue() as $id) {
+            $orderItems[] = $i . '. ' . $this->zoneName((int) $id);
+            $i++;
+        }
         return [
             'online'   => (bool) $this->GetValue('Online'),
             'battery'  => (int) $this->GetValue('Battery'),
@@ -805,8 +811,9 @@ class MovaLidax extends IPSModule
             'charging' => GetValueFormatted($this->GetIDForIdent('Charging')),
             'firmware' => (string) $this->GetValue('Firmware'),
             'updated'  => $lu > 0 ? date('d.m.Y H:i:s', $lu) : '–',
-            'order'    => (string) $this->GetValue('ZoneOrder'),
-            'map'      => (string) $this->GetValue('Map'),
+            'order'      => (string) $this->GetValue('ZoneOrder'),
+            'orderItems' => $orderItems,
+            'map'        => (string) $this->GetValue('Map'),
             'zones'    => json_decode($this->ReadAttributeString('MapZones'), true) ?: [],
             'allow'    => (bool) $this->ReadPropertyBoolean('AllowControl'),
             'layout'   => $this->ReadPropertyString('DashboardLayout'),
@@ -839,6 +846,10 @@ body{margin:0;font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#1c1f23;
 .main>.right{flex:0 0 340px}
 .main.bottom{flex-direction:column}
 .main.bottom>.right{width:100%;flex:1 1 auto}
+.main:not(.bottom)>.right .btns,.main:not(.bottom)>.right .row{flex-direction:column;align-items:stretch}
+.main:not(.bottom)>.right button,.main:not(.bottom)>.right select{width:100%}
+.order div{padding:3px 2px;border-bottom:1px solid #2c3338}
+.order div:last-child{border-bottom:none}
 .map{background:#23272b;border-radius:12px;padding:10px;margin-bottom:14px;text-align:center}
 .sec{background:#272b30;border-radius:12px;padding:14px;margin-bottom:14px}
 .sec h2{font-size:14px;font-weight:600;margin:0 0 10px;color:#c8d0cb}
@@ -903,7 +914,8 @@ async function refresh(){
  document.getElementById('state').textContent=d.state||'–';
  document.getElementById('charge').textContent=d.charging||'–';
  document.getElementById('fw').textContent=d.firmware||'–';
- document.getElementById('order').textContent=d.order||'–';
+ var ord=document.getElementById('order');
+ if(d.orderItems&&d.orderItems.length){ord.innerHTML=d.orderItems.map(function(t){return '<div>'+t+'</div>'}).join('')}else{ord.textContent='–'}
  document.getElementById('upd').textContent='aktualisiert: '+d.updated;
  var dot=document.getElementById('dot'); dot.className='dot '+(d.online?'on':'off');
  document.getElementById('onTxt').textContent=d.online?'online':'offline';
