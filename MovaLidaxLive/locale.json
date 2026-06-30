@@ -1,0 +1,14 @@
+{
+    "translations": {
+        "de": {
+            "Live-Position über MQTT. Diese Instanz muss als Eltern-Instanz einen 'MQTT Client' haben (der wiederum auf einem 'Client Socket' zum MOVAhome-Broker sitzt). Wähle unten die MOVA-Hauptinstanz (REST) – von dort kommen Token und Topic automatisch.": "Live-Position über MQTT. Diese Instanz muss als Eltern-Instanz einen 'MQTT Client' haben (der wiederum auf einem 'Client Socket' zum MOVAhome-Broker sitzt). Wähle unten die MOVA-Hauptinstanz (REST) – von dort kommen Token und Topic automatisch.",
+            "MOVA-Hauptinstanz (REST)": "MOVA-Hauptinstanz (REST)",
+            "Token automatisch in den MQTT-Client schreiben (empfohlen)": "Token automatisch in den MQTT-Client schreiben (empfohlen)",
+            "Token-Erneuerung": "Token-Erneuerung",
+            "Minuten": "Minuten",
+            "Verbindung jetzt aktualisieren (Token neu setzen)": "Verbindung jetzt aktualisieren (Token neu setzen)",
+            "Aktiv": "Aktiv",
+            "Bitte MOVA-Hauptinstanz wählen": "Bitte MOVA-Hauptinstanz wählen"
+        }
+    }
+}

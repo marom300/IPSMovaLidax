@@ -1,0 +1,41 @@
+{
+    "elements": [
+        {
+            "type": "Label",
+            "caption": "Live-Position über MQTT. Diese Instanz muss als Eltern-Instanz einen 'MQTT Client' haben (der wiederum auf einem 'Client Socket' zum MOVAhome-Broker sitzt). Wähle unten die MOVA-Hauptinstanz (REST) – von dort kommen Token und Topic automatisch."
+        },
+        {
+            "type": "SelectInstance",
+            "name": "MainInstanceID",
+            "caption": "MOVA-Hauptinstanz (REST)"
+        },
+        {
+            "type": "CheckBox",
+            "name": "ManageParent",
+            "caption": "Token automatisch in den MQTT-Client schreiben (empfohlen)"
+        },
+        {
+            "type": "NumberSpinner",
+            "name": "TokenRefreshMin",
+            "caption": "Token-Erneuerung",
+            "suffix": "Minuten",
+            "minimum": 10,
+            "maximum": 115
+        }
+    ],
+    "actions": [
+        {
+            "type": "Button",
+            "caption": "Verbindung jetzt aktualisieren (Token neu setzen)",
+            "onClick": "MOVAL_RefreshToken($id);"
+        },
+        {
+            "type": "Label",
+            "caption": "Client Socket: Host/Port aus bindDomain, 'Benutze SSL' AN, 'Überprüfe Peer' und 'Überprüfe Host' AUS. MQTT Client: ClientID max. 23 Zeichen (z. B. p_<uid>_xxxxxx). Nur das /status/…-Topic abonnieren, NICHT '#'."
+        }
+    ],
+    "status": [
+        { "code": 102, "icon": "active", "caption": "Aktiv" },
+        { "code": 104, "icon": "inactive", "caption": "Bitte MOVA-Hauptinstanz wählen" }
+    ]
+}

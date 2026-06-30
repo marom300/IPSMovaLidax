@@ -62,6 +62,7 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeString('MapZones', '[]');     // [{id,name}]
         $this->RegisterAttributeString('MapContours', '[]');  // [[id,sub], ...]
         $this->RegisterAttributeInteger('MapId', 1);
+        $this->RegisterAttributeString('MapRaw', '');      // dekodierte Karte (JSON) für Live-Neurender
         $this->RegisterAttributeString('ZoneQueue', '[]'); // Mäh-Reihenfolge [zoneId,...]
         $this->RegisterAttributeString('ConnHash', '');    // Hash der Verbindungsdaten (Cache-Invalidierung)
 
@@ -97,6 +98,11 @@ class MovaLidax extends IPSModule
         $this->RegisterVariableBoolean('ZoneClear', $this->Translate('Clear order'), '~Switch', 89);
         $this->EnableAction('ZoneClear');
         $this->RegisterVariableString('Map', $this->Translate('Map'), '~HTMLBox', 95);
+        // Live-Position (wird vom MQTT-Kindmodul über UpdatePosition gefüttert)
+        $this->RegisterVariableInteger('RobotX', $this->Translate('Robot X'), '', 96);
+        $this->RegisterVariableInteger('RobotY', $this->Translate('Robot Y'), '', 97);
+        $this->RegisterVariableInteger('RobotHeading', $this->Translate('Heading'), '', 98);
+        $this->RegisterVariableInteger('PositionUpdate', $this->Translate('Position update'), '~UnixTimestamp', 99);
         $this->updateOrderDisplay();
 
         // WebHook für das HTML-Dashboard (in IPSView per URL aufrufbar)
@@ -447,6 +453,9 @@ class MovaLidax extends IPSModule
         $this->WriteAttributeInteger('MapId', $mapId);
         $this->rebuildZoneProfile($zones);
 
+        // Dekodierte Karte für spätere Live-Neurender (roter Punkt) zwischenspeichern
+        $this->WriteAttributeString('MapRaw', json_encode($map));
+
         // Karte als SVG rendern und in die HTMLBox-Variable schreiben
         $svg = $this->buildMapSvg($map);
         if ($svg !== '') {
@@ -666,8 +675,12 @@ class MovaLidax extends IPSModule
         return $out;
     }
 
-    /** Baut aus dem Karten-JSON ein responsives SVG (Zonen farbig + beschriftet). */
-    private function buildMapSvg(array $map): string
+    /**
+     * Baut aus dem Karten-JSON ein responsives SVG (Zonen farbig + beschriftet).
+     * $robot (optional): ['x'=>int,'y'=>int,'h'=>float] in Karten-Einheiten zeichnet
+     * die Live-Position als roten Punkt mit Richtungsstrich.
+     */
+    private function buildMapSvg(array $map, ?array $robot = null): string
     {
         $zones     = $this->extractZones($map);
         $forbidden = $this->extractPaths($map, 'forbiddenAreas');
@@ -790,6 +803,27 @@ class MovaLidax extends IPSModule
               . '<rect x="' . $gx . '" y="' . ($lyT - (int) round($ls * 0.28)) . '" width="' . (int) round($ls * 1.2) . '" height="' . max(3, (int) round($ls * 0.22)) . '" rx="2" fill="' . $contourCol . '"/>'
               . '<text x="' . ($gx + (int) round($ls * 1.2) + 8) . '" y="' . $lyT . '" font-size="' . $ls . '" fill="' . $textCol . '">Grenze</text>'
               . '</g>';
+
+        // Live-Position (roter Punkt + Richtungsstrich)
+        if ($robot !== null && isset($robot['x'], $robot['y'])
+            && $robot['x'] >= $minx && $robot['x'] <= $maxx
+            && $robot['y'] >= $miny && $robot['y'] <= $maxy) {
+            $rp = $tx([$robot['x'], $robot['y']]);
+            $rx = round($rp[0], 1);
+            $ry = round($rp[1], 1);
+            $r  = max(5, (int) round($legendSize * 0.45));
+            if (isset($robot['h'])) {
+                // Karten-Richtung (cos,sin) → Bildschirm (x rechts, y unten ⇒ -sin)
+                $rad = deg2rad((float) $robot['h']);
+                $len = $r * 2.4;
+                $ex = round($rx + $len * cos($rad), 1);
+                $ey = round($ry - $len * sin($rad), 1);
+                $svg .= '<line x1="' . $rx . '" y1="' . $ry . '" x2="' . $ex . '" y2="' . $ey . '" '
+                      . 'stroke="#e53935" stroke-width="' . max(2, (int) round($r * 0.4)) . '" stroke-linecap="round"/>';
+            }
+            $svg .= '<circle cx="' . $rx . '" cy="' . $ry . '" r="' . $r . '" '
+                  . 'fill="#e53935" stroke="#ffffff" stroke-width="' . max(2, (int) round($r * 0.35)) . '"/>';
+        }
 
         $svg .= '</svg>';
         return $svg;
@@ -1229,6 +1263,88 @@ HTML;
             $out['firmware'] = $ver;
         }
         return $out;
+    }
+
+    // ------------------------------------------------------------------ //
+    //  Live-Position (Stufe 4) — gefüttert vom MQTT-Kindmodul
+    // ------------------------------------------------------------------ //
+
+    /**
+     * Öffentlich (MOVA_UpdatePosition): Live-Position des Roboters setzen und den
+     * roten Punkt in die Karte zeichnen. x/y in Karten-Einheiten, heading in Grad.
+     * Das SVG-Neurender ist auf ~alle 2 s gedrosselt (Schonung).
+     */
+    public function UpdatePosition(int $X, int $Y, float $Heading): void
+    {
+        $this->SetValue('RobotX', $X);
+        $this->SetValue('RobotY', $Y);
+        $this->SetValue('RobotHeading', (int) round($Heading));
+        $this->SetValue('PositionUpdate', time());
+
+        $now  = time();
+        $last = (int) $this->GetBuffer('LastMapRender');
+        if ($now - $last < 2) {
+            return; // Render drosseln
+        }
+        $raw = $this->ReadAttributeString('MapRaw');
+        if ($raw === '') {
+            return; // noch keine Karte geladen
+        }
+        $map = json_decode($raw, true);
+        if (!is_array($map)) {
+            return;
+        }
+        $svg = $this->buildMapSvg($map, ['x' => $X, 'y' => $Y, 'h' => $Heading]);
+        if ($svg !== '') {
+            $this->SetValue('Map', $svg);
+            $this->SetBuffer('LastMapRender', (string) $now);
+        }
+    }
+
+    /**
+     * Öffentlich (MOVA_GetMqttAuth): liefert dem Live-Kindmodul die aktuellen
+     * MQTT-Verbindungsdaten als JSON (inkl. frischem Token). Loggt ggf. ein.
+     */
+    public function GetMqttAuth(): string
+    {
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            return json_encode(['ok' => false]);
+        }
+        $host     = $this->ReadAttributeString('Host'); // bindDomain "hostname:port"
+        $hostname = $host;
+        $port     = 0;
+        if (strpos($host, ':') !== false) {
+            $parts    = explode(':', $host, 2);
+            $hostname = $parts[0];
+            $port     = (int) $parts[1];
+        }
+        $did    = $this->ReadAttributeString('Did');
+        $uid    = $this->ReadAttributeString('Uid');   // masterUid (Topic/ClientID)
+        $uuid   = $this->ReadAttributeString('Uuid');  // Login-uid (MQTT-Benutzername)
+        $model  = $this->ReadAttributeString('Model');
+        $region = $this->ReadPropertyString('Region');
+        $token  = $this->ReadAttributeString('AccessToken');
+
+        return json_encode([
+            'ok'       => true,
+            'host'     => $hostname,
+            'port'     => $port,
+            'username' => $uuid,
+            'password' => $token,
+            'clientid' => $this->shortClientId($uid),
+            'topic'    => '/status/' . $did . '/' . $uid . '/' . $model . '/' . $region . '/',
+            'did'      => $did,
+            'uid'      => $uid,
+            'model'    => $model,
+            'region'   => $region,
+        ]);
+    }
+
+    /** Kurze, broker-taugliche ClientID (Symcon/MQTT 3.1: max. 23 Zeichen). */
+    private function shortClientId(string $uid): string
+    {
+        $id = 'p_' . $uid . '_' . substr(md5($uid . $this->InstanceID), 0, 6);
+        return strlen($id) > 23 ? substr($id, 0, 23) : $id;
     }
 
     // ------------------------------------------------------------------ //
