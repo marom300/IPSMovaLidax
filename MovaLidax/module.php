@@ -43,7 +43,7 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyInteger('LabelSize', 26);
         $this->RegisterPropertyInteger('LegendSize', 17);
         $this->RegisterPropertyInteger('MapMaxHeight', 75);
-        $this->RegisterPropertyString('DashboardLayout', 'right'); // right | bottom
+        $this->RegisterPropertyString('DashboardLayout', 'split'); // split | right | bottom
 
         // Token-/Geräte-Cache
         $this->RegisterAttributeString('AccessToken', '');
@@ -843,12 +843,18 @@ body{font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#1c1f23;color:#e7
 .bat{height:7px;border-radius:4px;background:#3a3f45;margin-top:.7vh;overflow:hidden}
 .bat>i{display:block;height:100%;background:#4caf50;transition:width .4s}
 .main{flex:1;min-height:0;display:flex;gap:1vw}
-.main.bottom{flex-direction:column}
-.main>.left{flex:1 1 auto;min-width:0;min-height:0;display:flex}
-.map{flex:1;min-height:0;background:#23272b;border-radius:12px;padding:.8vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.map{flex:1;min-height:0;order:2;background:#23272b;border-radius:12px;padding:.8vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .map svg{max-width:100%!important;max-height:100%!important;width:auto!important;height:auto!important}
-.main>.right{flex:0 0 clamp(210px,26vw,320px);min-height:0;display:flex;flex-direction:column;gap:.9vh;overflow:auto}
-.main.bottom>.right{flex:0 0 auto;width:100%}
+.grp{flex:0 0 clamp(180px,22vw,300px);min-height:0;display:flex;flex-direction:column;gap:.9vh;overflow:auto}
+.grp.ctrl{order:1}.grp.zones{order:3}
+.main.right .map{order:1}
+.main.right .grp{order:2;flex-basis:clamp(210px,26vw,320px)}
+.main.right .grp.zones{order:3}
+.main.bottom{flex-direction:column}
+.main.bottom .map{order:1}
+.main.bottom .grp{order:2;flex:0 0 auto;width:100%;overflow:visible}
+.main.bottom .btns,.main.bottom .row{flex-direction:row;flex-wrap:wrap}
+.main.bottom button,.main.bottom select{width:auto}
 .sec{background:#272b30;border-radius:10px;padding:1vh;display:flex;flex-direction:column;gap:.7vh}
 .sec h2{font-size:clamp(11px,1.6vh,14px);font-weight:600;margin:0;color:#c8d0cb}
 .btns,.row{display:flex;flex-direction:column;gap:.6vh}
@@ -874,9 +880,8 @@ select{background:#2f343a;color:#e7ebe6}
   <div class="card"><div class="lbl">Laden</div><div class="val" id="charge">–</div></div>
   <div class="card"><div class="lbl">Firmware</div><div class="val" style="font-size:16px" id="fw">–</div></div>
  </div>
- <div class="main" id="main">
-  <div class="left"><div class="map" id="map"></div></div>
-  <div class="right">
+ <div class="main split" id="main">
+  <div class="grp ctrl">
    <div class="sec"><h2>Steuerung</h2>
     <div class="btns">
      <button class="go" onclick="cmd('all')">Gesamtes Gebiet</button>
@@ -887,6 +892,14 @@ select{background:#2f343a;color:#e7ebe6}
      <button class="stop" onclick="cmd('home')">Stopp &amp; Heim</button>
     </div>
    </div>
+   <div class="sec"><div class="row">
+     <button onclick="cmd('poll')">Status aktualisieren</button>
+     <button onclick="cmd('loadmap')">Karte neu laden</button>
+     <span id="upd" class="upd"></span>
+   </div></div>
+  </div>
+  <div class="map" id="map"></div>
+  <div class="grp zones">
    <div class="sec"><h2>Zonen mähen</h2>
     <div class="row">
      <select id="zoneSel"></select>
@@ -897,11 +910,6 @@ select{background:#2f343a;color:#e7ebe6}
     </div>
     <div class="order" id="order">–</div>
    </div>
-   <div class="sec"><div class="row">
-     <button onclick="cmd('poll')">Status aktualisieren</button>
-     <button onclick="cmd('loadmap')">Karte neu laden</button>
-     <span id="upd" class="upd"></span>
-   </div></div>
   </div>
  </div>
 </div>
@@ -923,7 +931,7 @@ async function refresh(){
  document.getElementById('onTxt').textContent=d.online?'online':'offline';
  document.getElementById('warn').style.display=d.allow?'none':'block';
  document.getElementById('map').innerHTML=d.map||'';
- document.getElementById('main').className='main'+(d.layout==='bottom'?' bottom':'');
+ document.getElementById('main').className='main '+(d.layout||'split');
  var k=JSON.stringify(d.zones||[]);
  if(k!==zonesKey){zonesKey=k;var s=document.getElementById('zoneSel');var cur=s.value;s.innerHTML='';
   (d.zones||[]).forEach(function(z){var o=document.createElement('option');o.value=z.id;o.textContent=z.name;s.appendChild(o)});

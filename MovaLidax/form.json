@@ -67,6 +67,7 @@
                     "name": "DashboardLayout",
                     "caption": "Dashboard-Layout (HTML-Seite)",
                     "options": [
+                        { "caption": "Geteilt: Steuerung links, Zonen rechts (für Tablet)", "value": "split" },
                         { "caption": "Steuerung rechts neben der Karte", "value": "right" },
                         { "caption": "Steuerung unter der Karte", "value": "bottom" }
                     ]
