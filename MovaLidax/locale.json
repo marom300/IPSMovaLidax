@@ -24,6 +24,8 @@
             "Pausiert (Temperatur)": "Pausiert (Temperatur)",
             "Command": "Befehl",
             "Mow zone": "Mähzone",
+            "Mow selected zone": "Zone mähen (Start)",
+            "Please select a zone first.": "Bitte zuerst eine Zone im Dropdown 'Mähzone' wählen.",
             "Map": "Karte",
             "Zone": "Zone",
             "Mow whole area": "Gesamtes Gebiet mähen",

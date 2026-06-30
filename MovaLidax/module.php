@@ -78,6 +78,8 @@ class MovaLidax extends IPSModule
         $this->EnableAction('Action');
         $this->RegisterVariableInteger('Zone', $this->Translate('Mow zone'), 'MOVA.Zones', 80);
         $this->EnableAction('Zone');
+        $this->RegisterVariableBoolean('ZoneStart', $this->Translate('Mow selected zone'), '~Switch', 85);
+        $this->EnableAction('ZoneStart');
         $this->RegisterVariableString('Map', $this->Translate('Map'), '~HTMLBox', 90);
 
         // Bei Konfigurationsänderung Geräte-Cache verwerfen (Region/Konto könnte sich geändert haben)
@@ -150,10 +152,14 @@ class MovaLidax extends IPSModule
                 $this->SetValue('Action', 0);
                 break;
             case 'Zone':
+                // Nur auswählen — gestartet wird über den ZoneStart-Button
                 $this->SetValue('Zone', (int) $Value);
-                if ((int) $Value > 0) {
-                    $this->StartZone((int) $Value);
+                break;
+            case 'ZoneStart':
+                if ($Value) {
+                    $this->StartSelectedZone();
                 }
+                $this->SetValue('ZoneStart', false);
                 break;
         }
     }
@@ -207,6 +213,17 @@ class MovaLidax extends IPSModule
         }
         return $this->mowTask('Zone ' . $ZoneID,
             ['m' => 'a', 'p' => 0, 'o' => 102, 'd' => ['region' => [$ZoneID]]]);
+    }
+
+    /** Mäht die aktuell im Dropdown 'Mähzone' gewählte Zone (Start-Button). */
+    public function StartSelectedZone(): bool
+    {
+        $zoneId = (int) $this->GetValue('Zone');
+        if ($zoneId <= 0) {
+            echo $this->Translate('Please select a zone first.');
+            return false;
+        }
+        return $this->StartZone($zoneId);
     }
 
     // Stop/Dock/Pause sind "beruhigende" Befehle -> ohne Freischalt-Pflicht.

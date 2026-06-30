@@ -82,6 +82,11 @@
         },
         {
             "type": "Button",
+            "caption": "Gewählte Zone mähen (aus 'Mähzone')",
+            "onClick": "MOVA_StartSelectedZone($id);"
+        },
+        {
+            "type": "Button",
             "caption": "Karte / Zonen laden",
             "onClick": "MOVA_LoadMap($id);"
         },
