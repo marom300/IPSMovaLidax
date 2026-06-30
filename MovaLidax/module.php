@@ -95,6 +95,9 @@ class MovaLidax extends IPSModule
         $this->RegisterVariableString('Map', $this->Translate('Map'), '~HTMLBox', 95);
         $this->updateOrderDisplay();
 
+        // WebHook für das HTML-Dashboard (in IPSView per URL aufrufbar)
+        $this->RegisterHook('/hook/movalidax' . $this->InstanceID);
+
         // Bei Konfigurationsänderung Geräte-Cache verwerfen (Region/Konto könnte sich geändert haben)
         $this->WriteAttributeString('Did', '');
         $this->WriteAttributeString('Host', '');
@@ -719,6 +722,190 @@ class MovaLidax extends IPSModule
         foreach ($zones as $z) {
             IPS_SetVariableProfileAssociation('MOVA.Zones', (int) $z['id'], (string) $z['name'], '', -1);
         }
+    }
+
+    // ------------------------------------------------------------------ //
+    //  WebHook / HTML-Dashboard
+    // ------------------------------------------------------------------ //
+    private function RegisterHook(string $Hook): void
+    {
+        $ids = IPS_GetInstanceListByModuleID('{015A6EB8-D6E5-4B93-B496-0D3F77AE9FE1}'); // WebHook Control
+        if (count($ids) === 0) {
+            return;
+        }
+        $hookID = $ids[0];
+        $hooks = json_decode(IPS_GetProperty($hookID, 'Hooks'), true);
+        if (!is_array($hooks)) {
+            $hooks = [];
+        }
+        foreach ($hooks as $h) {
+            if (($h['Hook'] ?? '') === $Hook && (int) ($h['TargetID'] ?? 0) === $this->InstanceID) {
+                return; // schon vorhanden
+            }
+        }
+        $hooks = array_values(array_filter($hooks, fn($h) => ($h['Hook'] ?? '') !== $Hook));
+        $hooks[] = ['Hook' => $Hook, 'TargetID' => $this->InstanceID];
+        IPS_SetProperty($hookID, 'Hooks', json_encode($hooks));
+        IPS_ApplyChanges($hookID);
+    }
+
+    /** Wird von der WebHook-Control bei Aufruf der Hook-URL gerufen. */
+    public function ProcessHookData(): void
+    {
+        $action = $_GET['action'] ?? ($_POST['action'] ?? '');
+
+        if ($action === 'status') {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($this->buildStatusData());
+            return;
+        }
+        if ($action !== '') {
+            header('Content-Type: application/json; charset=utf-8');
+            $this->handleHookAction((string) $action, array_merge($_GET, $_POST));
+            echo json_encode(['ok' => true]);
+            return;
+        }
+        header('Content-Type: text/html; charset=utf-8');
+        echo $this->buildDashboardHtml();
+    }
+
+    private function handleHookAction(string $action, array $p): void
+    {
+        switch ($action) {
+            case 'all':    $this->StartAll();    break;
+            case 'edge':   $this->StartEdge();   break;
+            case 'pause':  $this->MowerPause();  break;
+            case 'stop':   $this->MowerStop();   break;
+            case 'dock':   $this->MowerDock();   break;
+            case 'home':   $this->ReturnHome();  break;
+            case 'zone':   $this->StartZone((int) ($p['id'] ?? 0)); break;
+            case 'queueadd':
+                $zid = (int) ($p['id'] ?? 0);
+                if ($zid > 0) {
+                    $q = $this->getQueue();
+                    $q[] = $zid;
+                    $this->setQueue($q);
+                }
+                break;
+            case 'queuerun':   $this->QueueRun();   break;
+            case 'queueclear': $this->QueueClear(); break;
+            case 'poll':       $this->Poll();       break;
+            case 'loadmap':    $this->LoadMap();    break;
+        }
+    }
+
+    private function buildStatusData(): array
+    {
+        $lu = (int) $this->GetValue('LastUpdate');
+        return [
+            'online'   => (bool) $this->GetValue('Online'),
+            'battery'  => (int) $this->GetValue('Battery'),
+            'state'    => GetValueFormatted($this->GetIDForIdent('State')),
+            'charging' => GetValueFormatted($this->GetIDForIdent('Charging')),
+            'firmware' => (string) $this->GetValue('Firmware'),
+            'updated'  => $lu > 0 ? date('d.m.Y H:i:s', $lu) : '–',
+            'order'    => (string) $this->GetValue('ZoneOrder'),
+            'map'      => (string) $this->GetValue('Map'),
+            'zones'    => json_decode($this->ReadAttributeString('MapZones'), true) ?: [],
+            'allow'    => (bool) $this->ReadPropertyBoolean('AllowControl'),
+        ];
+    }
+
+    private function buildDashboardHtml(): string
+    {
+        return <<<'HTML'
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOVA LiDAX</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#1c1f23;color:#e7ebe6}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.top h1{font-size:20px;font-weight:600;margin:0}
+.dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:6px;background:#888;vertical-align:middle}
+.dot.on{background:#4caf50}.dot.off{background:#e74c3c}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.card{background:#272b30;border-radius:12px;padding:12px 14px}
+.card .lbl{font-size:12px;color:#9aa3a0;text-transform:uppercase;letter-spacing:.04em}
+.card .val{font-size:22px;font-weight:600;margin-top:4px}
+.bat{height:8px;border-radius:4px;background:#3a3f45;margin-top:8px;overflow:hidden}
+.bat>i{display:block;height:100%;background:#4caf50;transition:width .4s}
+.map{background:#23272b;border-radius:12px;padding:10px;margin-bottom:14px;text-align:center}
+.sec{background:#272b30;border-radius:12px;padding:14px;margin-bottom:14px}
+.sec h2{font-size:14px;font-weight:600;margin:0 0 10px;color:#c8d0cb}
+.btns,.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select{font:inherit;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
+button{background:#3a4047;color:#e7ebe6}button:hover{background:#454c54}
+button.go{background:#3f7d34}button.go:hover{background:#4a9140}
+button.stop{background:#9a3b32}button.stop:hover{background:#b5453a}
+select{background:#2f343a;color:#e7ebe6}
+.order{margin-top:10px;font-size:14px;color:#bcd0b0;background:#23282c;border-radius:8px;padding:8px 10px;min-height:20px}
+.warn{background:#5a3a14;color:#ffd9a0;border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:14px;display:none}
+.upd{color:#8a938e;font-size:13px}
+</style></head>
+<body><div class="wrap">
+ <div class="top"><h1>MOVA LiDAX</h1><div><span id="dot" class="dot"></span><span id="onTxt">…</span></div></div>
+ <div id="warn" class="warn">Steuerung gesperrt – in Symcon „Steuerung freischalten" aktivieren.</div>
+ <div class="cards">
+  <div class="card"><div class="lbl">Akku</div><div class="val"><span id="bat">–</span>%</div><div class="bat"><i id="batBar" style="width:0%"></i></div></div>
+  <div class="card"><div class="lbl">Status</div><div class="val" id="state">–</div></div>
+  <div class="card"><div class="lbl">Laden</div><div class="val" id="charge">–</div></div>
+  <div class="card"><div class="lbl">Firmware</div><div class="val" style="font-size:16px" id="fw">–</div></div>
+ </div>
+ <div class="map" id="map"></div>
+ <div class="sec"><h2>Steuerung</h2>
+  <div class="btns">
+   <button class="go" onclick="cmd('all')">Gesamtes Gebiet</button>
+   <button class="go" onclick="cmd('edge')">Begrenzung</button>
+   <button onclick="cmd('pause')">Pause</button>
+   <button class="stop" onclick="cmd('stop')">Stop</button>
+   <button onclick="cmd('dock')">Andocken</button>
+   <button class="stop" onclick="cmd('home')">Stopp &amp; Heim</button>
+  </div>
+ </div>
+ <div class="sec"><h2>Zonen mähen</h2>
+  <div class="row">
+   <select id="zoneSel"></select>
+   <button class="go" onclick="cmd('zone&id='+zv())">Diese Zone</button>
+   <button onclick="cmd('queueadd&id='+zv())">+ zur Reihenfolge</button>
+   <button class="go" onclick="cmd('queuerun')">Reihenfolge mähen</button>
+   <button onclick="cmd('queueclear')">Leeren</button>
+  </div>
+  <div class="order" id="order">–</div>
+ </div>
+ <div class="sec"><div class="row">
+   <button onclick="cmd('poll')">Status aktualisieren</button>
+   <button onclick="cmd('loadmap')">Karte neu laden</button>
+   <span id="upd" class="upd"></span>
+ </div></div>
+</div>
+<script>
+function zv(){return document.getElementById('zoneSel').value}
+async function cmd(a){try{await fetch('?action='+a)}catch(e){} setTimeout(refresh,600)}
+let zonesKey='';
+async function refresh(){
+ let d; try{ d=await (await fetch('?action=status')).json() }catch(e){return}
+ document.getElementById('bat').textContent=d.battery;
+ document.getElementById('batBar').style.width=Math.max(0,Math.min(100,d.battery))+'%';
+ document.getElementById('state').textContent=d.state||'–';
+ document.getElementById('charge').textContent=d.charging||'–';
+ document.getElementById('fw').textContent=d.firmware||'–';
+ document.getElementById('order').textContent=d.order||'–';
+ document.getElementById('upd').textContent='aktualisiert: '+d.updated;
+ var dot=document.getElementById('dot'); dot.className='dot '+(d.online?'on':'off');
+ document.getElementById('onTxt').textContent=d.online?'online':'offline';
+ document.getElementById('warn').style.display=d.allow?'none':'block';
+ document.getElementById('map').innerHTML=d.map||'';
+ var k=JSON.stringify(d.zones||[]);
+ if(k!==zonesKey){zonesKey=k;var s=document.getElementById('zoneSel');var cur=s.value;s.innerHTML='';
+  (d.zones||[]).forEach(function(z){var o=document.createElement('option');o.value=z.id;o.textContent=z.name;s.appendChild(o)});
+  if(cur)s.value=cur;}
+}
+refresh(); setInterval(refresh,5000);
+</script></body></html>
+HTML;
     }
 
     // ------------------------------------------------------------------ //
