@@ -60,6 +60,40 @@
         },
         {
             "type": "ExpansionPanel",
+            "caption": "Zonennamen (überschreiben App/Cloud-Namen)",
+            "items": [
+                {
+                    "type": "Label",
+                    "caption": "Die in der MOVA-App vergebenen Zonennamen liefert die Cloud nicht – sie kommt nur mit den Geräte-Standardnamen (Zone1…N). Hier eigene Namen vergeben; sie überschreiben die Cloud-Namen in Dropdown, Karte und Dashboard. Nach 'Karte / Zonen laden' erscheinen die gefundenen Zonen automatisch in der Liste. Name leer = Cloud-Name verwenden. Nach dem Ändern einmal 'Karte / Zonen laden' klicken."
+                },
+                {
+                    "type": "List",
+                    "name": "ZoneNames",
+                    "caption": "Zonennamen",
+                    "rowCount": 6,
+                    "add": true,
+                    "delete": true,
+                    "columns": [
+                        {
+                            "caption": "Zonen-ID",
+                            "name": "ZoneID",
+                            "width": "120px",
+                            "add": 0,
+                            "edit": { "type": "NumberSpinner" }
+                        },
+                        {
+                            "caption": "Name",
+                            "name": "Name",
+                            "width": "auto",
+                            "add": "",
+                            "edit": { "type": "ValidationTextBox" }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
             "caption": "Karten-Darstellung (Größe & Schrift)",
             "items": [
                 {

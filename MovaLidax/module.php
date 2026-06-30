@@ -44,6 +44,8 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyInteger('LegendSize', 17);
         $this->RegisterPropertyInteger('MapMaxHeight', 75);
         $this->RegisterPropertyString('DashboardLayout', 'split'); // split | right | bottom
+        // Eigene Zonennamen (überschreiben die Cloud-Defaults) — [{ZoneID,Name}, ...]
+        $this->RegisterPropertyString('ZoneNames', '[]');
 
         // Token-/Geräte-Cache
         $this->RegisterAttributeString('AccessToken', '');
@@ -61,6 +63,7 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeString('MapContours', '[]');  // [[id,sub], ...]
         $this->RegisterAttributeInteger('MapId', 1);
         $this->RegisterAttributeString('ZoneQueue', '[]'); // Mäh-Reihenfolge [zoneId,...]
+        $this->RegisterAttributeString('ConnHash', '');    // Hash der Verbindungsdaten (Cache-Invalidierung)
 
         $this->RegisterTimer('Poll', 0, 'MOVA_Poll($_IPS[\'TARGET\']);');
     }
@@ -99,9 +102,21 @@ class MovaLidax extends IPSModule
         // WebHook für das HTML-Dashboard (in IPSView per URL aufrufbar)
         $this->RegisterHook('/hook/movalidax' . $this->InstanceID);
 
-        // Bei Konfigurationsänderung Geräte-Cache verwerfen (Region/Konto könnte sich geändert haben)
-        $this->WriteAttributeString('Did', '');
-        $this->WriteAttributeString('Host', '');
+        // Geräte-/Token-Cache nur verwerfen, wenn sich die Verbindungsdaten geändert haben.
+        // (Sonst würde ein programmatischer ApplyChanges — z. B. beim Zonen-Namen-Sync —
+        //  unnötig Gerät + Token neu auflösen.)
+        $connHash = md5(
+            $this->ReadPropertyString('Email') . '|' . $this->ReadPropertyString('Region')
+            . '|' . $this->ReadPropertyString('AccountType') . '|' . $this->ReadPropertyString('DeviceID')
+        );
+        if ($connHash !== $this->ReadAttributeString('ConnHash')) {
+            $this->WriteAttributeString('Did', '');
+            $this->WriteAttributeString('Host', '');
+            $this->WriteAttributeString('AccessToken', '');
+            $this->WriteAttributeString('RefreshToken', '');
+            $this->WriteAttributeInteger('KeyExpire', 0);
+            $this->WriteAttributeString('ConnHash', $connHash);
+        }
 
         $email = $this->ReadPropertyString('Email');
         $pass  = $this->ReadPropertyString('Password');
@@ -397,13 +412,15 @@ class MovaLidax extends IPSModule
         }
 
         $zones = [];
+        $discovered = [];
         foreach ($this->mapList($map, 'mowingAreas') as $entry) {
             $zid  = (int) ($entry[0] ?? 0);
             $name = (is_array($entry[1] ?? null)) ? (string) ($entry[1]['name'] ?? '') : '';
             if ($name === '') {
                 $name = $this->Translate('Zone') . ' ' . $zid;
             }
-            $zones[] = ['id' => $zid, 'name' => $name];
+            $discovered[] = $zid;
+            $zones[] = ['id' => $zid, 'name' => $this->displayZoneName($zid, $name)];
         }
         $contours = [];
         foreach ($this->mapList($map, 'contours') as $entry) {
@@ -436,10 +453,73 @@ class MovaLidax extends IPSModule
             $this->SetValue('Map', $svg);
         }
 
+        // Neu gefundene Zonen in die editierbare Namensliste übernehmen (vorhandene Namen bleiben).
+        $this->syncZoneNameList($discovered);
+
         $msg = sprintf($this->Translate('Map loaded: %d zones, %d contours.'), count($zones), count($contours));
         $this->LogMessage($msg, KL_NOTIFY);
         echo $msg;
         return true;
+    }
+
+    /** Liefert den eigenen Zonennamen (falls gesetzt), sonst den Cloud-/Fallback-Namen. */
+    private function zoneNameOverride(int $id): string
+    {
+        $list = json_decode($this->ReadPropertyString('ZoneNames'), true);
+        if (is_array($list)) {
+            foreach ($list as $row) {
+                if ((int) ($row['ZoneID'] ?? 0) === $id) {
+                    $n = trim((string) ($row['Name'] ?? ''));
+                    if ($n !== '') {
+                        return $n;
+                    }
+                }
+            }
+        }
+        return '';
+    }
+
+    private function displayZoneName(int $id, string $fallback): string
+    {
+        $o = $this->zoneNameOverride($id);
+        return $o !== '' ? $o : $fallback;
+    }
+
+    /**
+     * Ergänzt neu entdeckte Zonen-IDs in der Property 'ZoneNames', damit sie in der
+     * Konfiguration zum Umbenennen erscheinen. Bereits vergebene Namen bleiben erhalten.
+     */
+    private function syncZoneNameList(array $discoveredIds): void
+    {
+        $list = json_decode($this->ReadPropertyString('ZoneNames'), true);
+        if (!is_array($list)) {
+            $list = [];
+        }
+        $existing = [];
+        foreach ($list as $row) {
+            $id = (int) ($row['ZoneID'] ?? 0);
+            if ($id > 0) {
+                $existing[$id] = (string) ($row['Name'] ?? '');
+            }
+        }
+        $changed = false;
+        foreach ($discoveredIds as $id) {
+            $id = (int) $id;
+            if ($id > 0 && !array_key_exists($id, $existing)) {
+                $existing[$id] = '';
+                $changed = true;
+            }
+        }
+        if (!$changed) {
+            return;
+        }
+        ksort($existing);
+        $new = [];
+        foreach ($existing as $id => $name) {
+            $new[] = ['ZoneID' => $id, 'Name' => $name];
+        }
+        IPS_SetProperty($this->InstanceID, 'ZoneNames', json_encode(array_values($new)));
+        IPS_ApplyChanges($this->InstanceID);
     }
 
     private function requireControl(): bool
@@ -578,6 +658,7 @@ class MovaLidax extends IPSModule
                     if ($name === '') {
                         $name = 'Zone ' . $id;
                     }
+                    $name = $this->displayZoneName($id, $name);
                     $out[] = ['name' => $name, 'path' => $coords];
                 }
             }
