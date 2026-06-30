@@ -865,6 +865,9 @@ button{background:#3a4047;color:#e7ebe6}button:hover{background:#454c54}
 button.go{background:#3f7d34}button.go:hover{background:#4a9140}
 button.stop{background:#9a3b32}button.stop:hover{background:#b5453a}
 select{background:#2f343a;color:#e7ebe6}
+.zlist{display:flex;flex-direction:column;gap:.5vh}
+.zi{background:#2f343a;color:#e7ebe6;border:2px solid transparent;border-radius:9px;padding:clamp(6px,1.1vh,10px) 10px;cursor:pointer;text-align:center;font-size:clamp(12px,1.7vh,15px)}
+.zi.sel{border-color:#7ec96a;background:#36433a}
 .order{font-size:clamp(12px,1.6vh,14px);color:#bcd0b0;background:#23282c;border-radius:8px;padding:.6vh .8vh}
 .order div{padding:2px 2px;border-bottom:1px solid #2c3338}
 .order div:last-child{border-bottom:none}
@@ -901,12 +904,12 @@ select{background:#2f343a;color:#e7ebe6}
   <div class="map" id="map"></div>
   <div class="grp zones">
    <div class="sec"><h2>Zonen mähen</h2>
+    <div class="zlist" id="zoneList"></div>
     <div class="row">
-     <select id="zoneSel"></select>
-     <button class="go" onclick="cmd('zone&id='+zv())">Diese Zone</button>
-     <button onclick="cmd('queueadd&id='+zv())">+ zur Reihenfolge</button>
+     <button class="go" onclick="cmd('zone&id='+zv())">Diese Zone mähen</button>
+     <button onclick="addSel()">+ zur Reihenfolge</button>
      <button class="go" onclick="cmd('queuerun')">Reihenfolge mähen</button>
-     <button onclick="cmd('queueclear')">Leeren</button>
+     <button onclick="clearSel()">Leeren</button>
     </div>
     <div class="order" id="order">–</div>
    </div>
@@ -914,7 +917,11 @@ select{background:#2f343a;color:#e7ebe6}
  </div>
 </div>
 <script>
-function zv(){return document.getElementById('zoneSel').value}
+var selZone=0,zlist=[];
+function zv(){return selZone}
+function renderZones(){var el=document.getElementById('zoneList');if(!el)return;el.innerHTML='';if(selZone===0&&zlist.length)selZone=zlist[0].id;zlist.forEach(function(z){var b=document.createElement('div');b.className='zi'+(z.id==selZone?' sel':'');b.textContent=z.name;b.onclick=function(){selZone=z.id;renderZones()};el.appendChild(b)})}
+function addSel(){if(selZone>0){cmd('queueadd&id='+selZone);selZone=0;renderZones()}}
+function clearSel(){selZone=0;cmd('queueclear');renderZones()}
 async function cmd(a){try{await fetch('?action='+a)}catch(e){} setTimeout(refresh,600)}
 let zonesKey='';
 async function refresh(){
@@ -933,9 +940,7 @@ async function refresh(){
  document.getElementById('map').innerHTML=d.map||'';
  document.getElementById('main').className='main '+(d.layout||'split');
  var k=JSON.stringify(d.zones||[]);
- if(k!==zonesKey){zonesKey=k;var s=document.getElementById('zoneSel');var cur=s.value;s.innerHTML='';
-  (d.zones||[]).forEach(function(z){var o=document.createElement('option');o.value=z.id;o.textContent=z.name;s.appendChild(o)});
-  if(cur)s.value=cur;}
+ if(k!==zonesKey){zonesKey=k;zlist=d.zones||[];renderZones();}
 }
 refresh(); setInterval(refresh,5000);
 </script></body></html>
