@@ -750,7 +750,7 @@ class MovaLidax extends IPSModule
     }
 
     /** Wird von der WebHook-Control bei Aufruf der Hook-URL gerufen. */
-    public function ProcessHookData(): void
+    public function ProcessHookData()
     {
         $action = $_GET['action'] ?? ($_POST['action'] ?? '');
 
