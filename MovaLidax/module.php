@@ -40,6 +40,9 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyBoolean('AllowControl', false);
         $this->RegisterPropertyBoolean('MapTransparent', true);
         $this->RegisterPropertyInteger('MapBackground', 0xFFFFFF);
+        $this->RegisterPropertyInteger('LabelSize', 26);
+        $this->RegisterPropertyInteger('LegendSize', 17);
+        $this->RegisterPropertyInteger('MapMaxHeight', 75);
 
         // Token-/Geräte-Cache
         $this->RegisterAttributeString('AccessToken', '');
@@ -491,11 +494,16 @@ class MovaLidax extends IPSModule
                 $maxy = max($maxy, $pt[1]);
             }
         }
+        // Konfigurierbare Darstellung
+        $labelSize  = min(80, max(8, $this->ReadPropertyInteger('LabelSize')));
+        $legendSize = min(60, max(8, $this->ReadPropertyInteger('LegendSize')));
+        $maxH       = min(100, max(20, $this->ReadPropertyInteger('MapMaxHeight')));
+
         $w = max($maxx - $minx, 1);
         $h = max($maxy - $miny, 1);
         $target = 900;
         $pad = 24;
-        $header = 50; // Platz oben für die Legende
+        $header = max(46, $legendSize + 30); // Platz oben für die Legende
         $scale = ($target - 2 * $pad) / max($w, $h);
         $width = $w * $scale + 2 * $pad;
         $height = $header + $h * $scale + 2 * $pad;
@@ -533,7 +541,7 @@ class MovaLidax extends IPSModule
 
         $svg = '<svg viewBox="0 0 ' . round($width) . ' ' . round($height) . '" '
              . 'xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif" '
-             . 'style="width:100%;height:auto;max-height:75vh;background:' . $bg . ';border-radius:8px">';
+             . 'style="width:100%;height:auto;max-height:' . $maxH . 'vh;background:' . $bg . ';border-radius:8px">';
 
         // Zonen eingefärbt
         $i = 0;
@@ -564,18 +572,23 @@ class MovaLidax extends IPSModule
             }
             $ctr = $tx([$cx / $n, $cy / $n]);
             $label = htmlspecialchars($z['name'], ENT_QUOTES);
-            $svg .= '<text x="' . round($ctr[0], 1) . '" y="' . round($ctr[1] + 8, 1) . '" '
-                  . 'font-size="26" font-weight="700" fill="#243018" text-anchor="middle" '
-                  . 'paint-order="stroke" stroke="#ffffff" stroke-width="5" stroke-opacity="0.8">'
+            $halo = max(2, (int) round($labelSize * 0.2));
+            $svg .= '<text x="' . round($ctr[0], 1) . '" y="' . round($ctr[1] + $labelSize * 0.35, 1) . '" '
+                  . 'font-size="' . $labelSize . '" font-weight="700" fill="#243018" text-anchor="middle" '
+                  . 'paint-order="stroke" stroke="#ffffff" stroke-width="' . $halo . '" stroke-opacity="0.8">'
                   . $label . '</text>';
         }
 
         // Legende (oben)
+        $ls  = $legendSize;
+        $lyT = $header - 14;                                // Text-Grundlinie
+        $lyS = $lyT - $ls + 2;                              // Swatch oben
+        $gx  = 16 + $ls + 6 + (int) round(strlen('Sperrzone') * $ls * 0.6) + 26;
         $svg .= '<g>'
-              . '<rect x="16" y="15" width="17" height="17" rx="3" fill="#e74c3c" fill-opacity="0.3" stroke="#b53224"/>'
-              . '<text x="40" y="29" font-size="17" fill="' . $textCol . '">Sperrzone</text>'
-              . '<rect x="138" y="22" width="20" height="4" rx="2" fill="' . $contourCol . '"/>'
-              . '<text x="166" y="29" font-size="17" fill="' . $textCol . '">Grenze</text>'
+              . '<rect x="16" y="' . $lyS . '" width="' . $ls . '" height="' . $ls . '" rx="3" fill="#e74c3c" fill-opacity="0.3" stroke="#b53224"/>'
+              . '<text x="' . (16 + $ls + 6) . '" y="' . $lyT . '" font-size="' . $ls . '" fill="' . $textCol . '">Sperrzone</text>'
+              . '<rect x="' . $gx . '" y="' . ($lyT - (int) round($ls * 0.28)) . '" width="' . (int) round($ls * 1.2) . '" height="' . max(3, (int) round($ls * 0.22)) . '" rx="2" fill="' . $contourCol . '"/>'
+              . '<text x="' . ($gx + (int) round($ls * 1.2) + 8) . '" y="' . $lyT . '" font-size="' . $ls . '" fill="' . $textCol . '">Grenze</text>'
               . '</g>';
 
         $svg .= '</svg>';

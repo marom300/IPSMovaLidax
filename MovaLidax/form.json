@@ -57,6 +57,34 @@
             "type": "SelectColor",
             "name": "MapBackground",
             "caption": "Hintergrundfarbe (nur falls nicht transparent)"
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Karten-Darstellung (Größe & Schrift)",
+            "items": [
+                {
+                    "type": "NumberSpinner",
+                    "name": "MapMaxHeight",
+                    "caption": "Max. Höhe der Karte",
+                    "suffix": "% der Ansicht",
+                    "minimum": 20,
+                    "maximum": 100
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "LabelSize",
+                    "caption": "Zonen-Schriftgröße",
+                    "minimum": 8,
+                    "maximum": 80
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "LegendSize",
+                    "caption": "Legenden-Schriftgröße",
+                    "minimum": 8,
+                    "maximum": 60
+                }
+            ]
         }
     ],
     "actions": [
