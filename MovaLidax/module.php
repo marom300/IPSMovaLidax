@@ -59,6 +59,7 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeString('MapZones', '[]');     // [{id,name}]
         $this->RegisterAttributeString('MapContours', '[]');  // [[id,sub], ...]
         $this->RegisterAttributeInteger('MapId', 1);
+        $this->RegisterAttributeString('ZoneQueue', '[]'); // Mäh-Reihenfolge [zoneId,...]
 
         $this->RegisterTimer('Poll', 0, 'MOVA_Poll($_IPS[\'TARGET\']);');
     }
@@ -83,7 +84,16 @@ class MovaLidax extends IPSModule
         $this->EnableAction('Zone');
         $this->RegisterVariableBoolean('ZoneStart', $this->Translate('Mow selected zone'), '~Switch', 85);
         $this->EnableAction('ZoneStart');
-        $this->RegisterVariableString('Map', $this->Translate('Map'), '~HTMLBox', 90);
+        // Mäh-Reihenfolge (mehrere Zonen in Wunsch-Reihenfolge)
+        $this->RegisterVariableString('ZoneOrder', $this->Translate('Mow order'), '', 86);
+        $this->RegisterVariableBoolean('ZoneAdd', $this->Translate('Add zone to order'), '~Switch', 87);
+        $this->EnableAction('ZoneAdd');
+        $this->RegisterVariableBoolean('ZoneRun', $this->Translate('Mow order (start)'), '~Switch', 88);
+        $this->EnableAction('ZoneRun');
+        $this->RegisterVariableBoolean('ZoneClear', $this->Translate('Clear order'), '~Switch', 89);
+        $this->EnableAction('ZoneClear');
+        $this->RegisterVariableString('Map', $this->Translate('Map'), '~HTMLBox', 95);
+        $this->updateOrderDisplay();
 
         // Bei Konfigurationsänderung Geräte-Cache verwerfen (Region/Konto könnte sich geändert haben)
         $this->WriteAttributeString('Did', '');
@@ -164,6 +174,22 @@ class MovaLidax extends IPSModule
                 }
                 $this->SetValue('ZoneStart', false);
                 break;
+            case 'ZoneAdd':
+                if ($Value) {
+                    $this->QueueAdd();
+                }
+                $this->SetValue('ZoneAdd', false);
+                break;
+            case 'ZoneRun':
+                if ($Value) {
+                    $this->QueueRun();
+                }
+                $this->SetValue('ZoneRun', false);
+                break;
+            case 'ZoneClear':
+                $this->QueueClear();
+                $this->SetValue('ZoneClear', false);
+                break;
         }
     }
 
@@ -227,6 +253,95 @@ class MovaLidax extends IPSModule
             return false;
         }
         return $this->StartZone($zoneId);
+    }
+
+    // --- Mäh-Reihenfolge (mehrere Zonen geordnet) --- //
+
+    /** Fügt die aktuell gewählte Zone der Reihenfolge hinzu. */
+    public function QueueAdd(): void
+    {
+        $zid = (int) $this->GetValue('Zone');
+        if ($zid <= 0) {
+            echo $this->Translate('Please select a zone first.');
+            return;
+        }
+        $q = $this->getQueue();
+        $q[] = $zid;
+        $this->setQueue($q);
+    }
+
+    /** Leert die Mäh-Reihenfolge. */
+    public function QueueClear(): void
+    {
+        $this->setQueue([]);
+    }
+
+    /** Mäht alle Zonen der Reihenfolge in genau dieser Reihenfolge. */
+    public function QueueRun(): bool
+    {
+        return $this->StartZones($this->getQueue());
+    }
+
+    /** Mäht mehrere Zonen (Opcode 102, region = Liste in Reihenfolge). */
+    public function StartZones(array $ZoneIDs): bool
+    {
+        if (!$this->requireControl()) {
+            return false;
+        }
+        $ids = [];
+        foreach ($ZoneIDs as $z) {
+            $z = (int) $z;
+            if ($z > 0) {
+                $ids[] = $z;
+            }
+        }
+        if (count($ids) === 0) {
+            echo $this->Translate('The mow order is empty.');
+            return false;
+        }
+        return $this->mowTask('Zonen ' . implode(',', $ids),
+            ['m' => 'a', 'p' => 0, 'o' => 102, 'd' => ['region' => $ids]]);
+    }
+
+    private function getQueue(): array
+    {
+        $q = json_decode($this->ReadAttributeString('ZoneQueue'), true);
+        return is_array($q) ? $q : [];
+    }
+
+    private function setQueue(array $q): void
+    {
+        $this->WriteAttributeString('ZoneQueue', json_encode(array_values($q)));
+        $this->updateOrderDisplay();
+    }
+
+    private function zoneName(int $id): string
+    {
+        $zones = json_decode($this->ReadAttributeString('MapZones'), true);
+        if (is_array($zones)) {
+            foreach ($zones as $z) {
+                if ((int) ($z['id'] ?? 0) === $id) {
+                    return (string) ($z['name'] ?? ('Zone ' . $id));
+                }
+            }
+        }
+        return 'Zone ' . $id;
+    }
+
+    private function updateOrderDisplay(): void
+    {
+        $q = $this->getQueue();
+        if (count($q) === 0) {
+            $this->SetValue('ZoneOrder', '–');
+            return;
+        }
+        $parts = [];
+        $i = 1;
+        foreach ($q as $id) {
+            $parts[] = $i . '. ' . $this->zoneName((int) $id);
+            $i++;
+        }
+        $this->SetValue('ZoneOrder', implode('   ', $parts));
     }
 
     // Stop/Dock/Pause sind "beruhigende" Befehle -> ohne Freischalt-Pflicht.

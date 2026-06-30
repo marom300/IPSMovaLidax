@@ -114,6 +114,14 @@
             "onClick": "MOVA_StartSelectedZone($id);"
         },
         {
+            "type": "RowLayout",
+            "items": [
+                { "type": "Button", "caption": "+ Zone zur Reihenfolge", "onClick": "MOVA_QueueAdd($id);" },
+                { "type": "Button", "caption": "Reihenfolge mähen", "onClick": "MOVA_QueueRun($id);" },
+                { "type": "Button", "caption": "Reihenfolge leeren", "onClick": "MOVA_QueueClear($id);" }
+            ]
+        },
+        {
             "type": "Button",
             "caption": "Karte / Zonen laden",
             "onClick": "MOVA_LoadMap($id);"
