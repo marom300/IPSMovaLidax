@@ -40,6 +40,8 @@
             "Area mowed": "Gemähte Fläche",
             "Area total": "Gesamtfläche",
             "Remaining (est.)": "Restzeit (geschätzt)",
+            "Last command": "Letzter Befehl",
+            "failed": "fehlgeschlagen",
             "Zone": "Zone",
             "Mow whole area": "Gesamtes Gebiet mähen",
             "Mow edge": "Begrenzung mähen",

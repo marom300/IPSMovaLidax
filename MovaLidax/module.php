@@ -85,6 +85,7 @@ class MovaLidax extends IPSModule
         // Steuer-Variablen (im WebFront/Tile bedienbar)
         $this->RegisterVariableInteger('Action', $this->Translate('Command'), 'MOVA.Action', 70);
         $this->EnableAction('Action');
+        $this->RegisterVariableString('LastCommand', $this->Translate('Last command'), '', 72);
         $this->RegisterVariableInteger('Zone', $this->Translate('Mow zone'), 'MOVA.Zones', 80);
         $this->EnableAction('Zone');
         $this->RegisterVariableBoolean('ZoneStart', $this->Translate('Mow selected zone'), '~Switch', 85);
@@ -550,12 +551,14 @@ class MovaLidax extends IPSModule
     {
         if (!$this->ensureLogin() || !$this->ensureDevice()) {
             echo $this->Translate('Not connected.');
+            $this->setLastCommand($label, false, $this->Translate('Not connected.'));
             return false;
         }
         $res = $this->sendAction(2, 50, [$payload]);
         $ok  = $res !== null;
         $this->LogMessage('Maehbefehl "' . $label . '": ' . ($ok ? 'OK' : 'fehlgeschlagen'),
             $ok ? KL_NOTIFY : KL_WARNING);
+        $this->setLastCommand($label, $ok);
         return $ok;
     }
 
@@ -563,13 +566,28 @@ class MovaLidax extends IPSModule
     {
         if (!$this->ensureLogin() || !$this->ensureDevice()) {
             echo $this->Translate('Not connected.');
+            $this->setLastCommand($label, false, $this->Translate('Not connected.'));
             return false;
         }
         $res = $this->sendAction($siid, $aiid, []);
         $ok  = $res !== null;
         $this->LogMessage('Befehl "' . $label . '": ' . ($ok ? 'OK' : 'fehlgeschlagen'),
             $ok ? KL_NOTIFY : KL_WARNING);
+        $this->setLastCommand($label, $ok);
         return $ok;
+    }
+
+    /** Schreibt die Sofort-Rückmeldung des letzten Steuerbefehls (Cloud-Annahme). */
+    private function setLastCommand(string $label, bool $ok, string $note = ''): void
+    {
+        $time = date('H:i:s');
+        if ($ok) {
+            $msg = '✓ ' . $label . ' – gesendet (' . $time . ')';
+        } else {
+            $msg = '✗ ' . $label . ' – '
+                 . ($note !== '' ? $note : $this->Translate('failed')) . ' (' . $time . ')';
+        }
+        $this->SetValue('LastCommand', $msg);
     }
 
     private function sendAction(int $siid, int $aiid, array $in)
@@ -881,25 +899,30 @@ class MovaLidax extends IPSModule
             return;
         }
         if ($action !== '') {
+            // Stray-Ausgaben der Befehle (z. B. "Steuerung gesperrt") einfangen,
+            // damit die JSON-Antwort sauber bleibt — und als Toast-Text nutzen.
+            ob_start();
+            $ok = $this->handleHookAction((string) $action, array_merge($_GET, $_POST));
+            $inline = trim((string) ob_get_clean());
+            $msg = $inline !== '' ? $inline : (string) $this->GetValue('LastCommand');
             header('Content-Type: application/json; charset=utf-8');
-            $this->handleHookAction((string) $action, array_merge($_GET, $_POST));
-            echo json_encode(['ok' => true]);
+            echo json_encode(['ok' => $ok, 'msg' => $msg]);
             return;
         }
         header('Content-Type: text/html; charset=utf-8');
         echo $this->buildDashboardHtml();
     }
 
-    private function handleHookAction(string $action, array $p): void
+    private function handleHookAction(string $action, array $p): bool
     {
         switch ($action) {
-            case 'all':    $this->StartAll();    break;
-            case 'edge':   $this->StartEdge();   break;
-            case 'pause':  $this->MowerPause();  break;
-            case 'stop':   $this->MowerStop();   break;
-            case 'dock':   $this->MowerDock();   break;
-            case 'home':   $this->ReturnHome();  break;
-            case 'zone':   $this->StartZone((int) ($p['id'] ?? 0)); break;
+            case 'all':    return $this->StartAll();
+            case 'edge':   return $this->StartEdge();
+            case 'pause':  return $this->MowerPause();
+            case 'stop':   return $this->MowerStop();
+            case 'dock':   return $this->MowerDock();
+            case 'home':   return $this->ReturnHome();
+            case 'zone':   return $this->StartZone((int) ($p['id'] ?? 0));
             case 'queueadd':
                 $zid = (int) ($p['id'] ?? 0);
                 if ($zid > 0) {
@@ -907,12 +930,13 @@ class MovaLidax extends IPSModule
                     $q[] = $zid;
                     $this->setQueue($q);
                 }
-                break;
-            case 'queuerun':   $this->QueueRun();   break;
-            case 'queueclear': $this->QueueClear(); break;
-            case 'poll':       $this->Poll();       break;
-            case 'loadmap':    $this->LoadMap();    break;
+                return true;
+            case 'queuerun':   return $this->QueueRun();
+            case 'queueclear': $this->QueueClear(); return true;
+            case 'poll':       $this->Poll();       return true;
+            case 'loadmap':    return $this->LoadMap();
         }
+        return true;
     }
 
     private function buildStatusData(): array
@@ -934,6 +958,7 @@ class MovaLidax extends IPSModule
             'areaDone'  => round((float) $this->GetValue('AreaDone'), 1),
             'areaTotal' => round((float) $this->GetValue('AreaTotal'), 1),
             'remaining' => (int) $this->GetValue('RemainingTime'),
+            'lastCmd'   => (string) $this->GetValue('LastCommand'),
             'updated'  => $lu > 0 ? date('d.m.Y H:i:s', $lu) : '–',
             'order'      => (string) $this->GetValue('ZoneOrder'),
             'orderItems' => $orderItems,
@@ -1002,6 +1027,9 @@ select{background:#2f343a;color:#e7ebe6}
 .order div:last-child{border-bottom:none}
 .warn{background:#5a3a14;color:#ffd9a0;border-radius:9px;padding:.7vh 1vh;font-size:clamp(12px,1.6vh,14px);flex:0 0 auto;display:none}
 .upd{color:#8a938e;font-size:clamp(11px,1.4vh,13px)}
+.toast{position:fixed;left:50%;bottom:2.5vh;transform:translateX(-50%) translateY(20px);background:#2f343a;color:#e7ebe6;padding:1vh 2vw;border-radius:10px;font-size:clamp(12px,1.7vh,15px);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.45);z-index:50}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{border-left:4px solid #4caf50}.toast.err{border-left:4px solid #e74c3c}
 </style></head>
 <body><div class="wrap">
  <div class="top"><h1>MOVA LiDAX</h1><div><span id="dot" class="dot"></span><span id="onTxt">…</span></div></div>
@@ -1049,13 +1077,15 @@ select{background:#2f343a;color:#e7ebe6}
   </div>
  </div>
 </div>
+<div id="toast" class="toast"></div>
 <script>
 var selZone=0,zlist=[];
+function toast(msg,ok){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(ok?'ok':'err');clearTimeout(window._tt);window._tt=setTimeout(function(){t.className='toast'},3500);}
 function zv(){return selZone}
 function renderZones(){var el=document.getElementById('zoneList');if(!el)return;el.innerHTML='';if(selZone===0&&zlist.length)selZone=zlist[0].id;zlist.forEach(function(z){var b=document.createElement('div');b.className='zi'+(z.id==selZone?' sel':'');b.textContent=z.name;b.onclick=function(){selZone=z.id;renderZones()};el.appendChild(b)})}
 function addSel(){if(selZone>0){cmd('queueadd&id='+selZone);selZone=0;renderZones()}}
 function clearSel(){selZone=0;cmd('queueclear');renderZones()}
-async function cmd(a){try{await fetch('?action='+a)}catch(e){} setTimeout(refresh,600)}
+async function cmd(a){try{var r=await (await fetch('?action='+a)).json();toast(r.msg||(r.ok?'Befehl gesendet':'Fehlgeschlagen'),r.ok);}catch(e){toast('Verbindungsfehler',false);} setTimeout(refresh,600)}
 let zonesKey='';
 async function refresh(){
  let d; try{ d=await (await fetch('?action=status')).json() }catch(e){return}
@@ -1361,6 +1391,26 @@ HTML;
             $this->SetValue('RemainingTime', (int) max(0, min(1440, round($remainingMin))));
         }
         // sonst: zu wenig Datenbasis — letzten Schätzwert behalten
+    }
+
+    /**
+     * Öffentlich (MOVA_UpdateLiveStatus): Echtzeit-Status aus MQTT-Pushes (2:1/3:1/3:2).
+     * Werte < 0 = „keine Änderung". So springt der Status ~sofort auf „Mäht", sobald der
+     * Mäher wirklich startet — die echte Bestätigung eines Steuerbefehls.
+     */
+    public function UpdateLiveStatus(int $State, int $Battery, int $Charging): void
+    {
+        if ($State >= 0) {
+            $this->SetValue('State', $State);
+        }
+        if ($Battery >= 0) {
+            $this->SetValue('Battery', $Battery);
+        }
+        if ($Charging >= 0) {
+            $this->SetValue('Charging', $Charging);
+        }
+        $this->SetValue('Online', true);
+        $this->SetValue('LastUpdate', time());
     }
 
     /**

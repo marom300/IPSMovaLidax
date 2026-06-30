@@ -139,16 +139,21 @@ class MovaLidaxLive extends IPSModule
             return '';
         }
 
+        $mainID   = $this->ReadPropertyInteger('MainInstanceID');
+        $haveMain = ($mainID > 0 && IPS_InstanceExists($mainID));
+        $st = -1; $bat = -1; $chg = -1;
+
         foreach ($params as $p) {
             if (!is_array($p)) {
                 continue;
             }
             $siid = (int) ($p['siid'] ?? -1);
             $piid = (int) ($p['piid'] ?? -1);
-            if ($siid === 1 && $piid === 4) { // Pose + Mäh-Fortschritt (1:4)
-                $dec    = $this->decodePose1_4($p['value'] ?? null);
-                $mainID = $this->ReadPropertyInteger('MainInstanceID');
-                if ($mainID > 0 && IPS_InstanceExists($mainID)) {
+            $val  = $p['value'] ?? null;
+
+            if ($siid === 1 && $piid === 4) {            // Pose + Mäh-Fortschritt (1:4)
+                $dec = $this->decodePose1_4($val);
+                if ($haveMain) {
                     if ($dec['pose'] !== null) {
                         @MOVA_UpdatePosition($mainID, $dec['pose']['x'], $dec['pose']['y'], $dec['pose']['h']);
                     }
@@ -156,7 +161,16 @@ class MovaLidaxLive extends IPSModule
                         @MOVA_UpdateProgress($mainID, $dec['task']['percent'], $dec['task']['current'], $dec['task']['total']);
                     }
                 }
+            } elseif ($siid === 2 && $piid === 1 && is_numeric($val)) { // Status
+                $st = (int) $val;
+            } elseif ($siid === 3 && $piid === 1 && is_numeric($val)) { // Akku
+                $bat = (int) $val;
+            } elseif ($siid === 3 && $piid === 2 && is_numeric($val)) { // Ladezustand
+                $chg = (int) $val;
             }
+        }
+        if ($haveMain && ($st >= 0 || $bat >= 0 || $chg >= 0)) {
+            @MOVA_UpdateLiveStatus($mainID, $st, $bat, $chg);
         }
         return '';
     }
