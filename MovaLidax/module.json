@@ -4,9 +4,7 @@
     "type": 3,
     "vendor": "Eigenentwicklung",
     "aliases": [
-        "MOVA LiDAX",
-        "MOVA Mähroboter",
-        "LiDAX Ultra 800"
+        "MOVA LiDAX"
     ],
     "url": "https://github.com/marom300/IPSMovaLidax",
     "parentRequirements": [],

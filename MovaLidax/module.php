@@ -103,6 +103,11 @@ class MovaLidax extends IPSModule
         $this->RegisterVariableInteger('RobotY', $this->Translate('Robot Y'), '', 97);
         $this->RegisterVariableInteger('RobotHeading', $this->Translate('Heading'), '', 98);
         $this->RegisterVariableInteger('PositionUpdate', $this->Translate('Position update'), '~UnixTimestamp', 99);
+        // Mäh-Fortschritt (aus der Pose-Property 1:4, Task-Block)
+        $this->RegisterVariableInteger('Progress', $this->Translate('Progress'), '~Progress', 100);
+        $this->RegisterVariableFloat('AreaDone', $this->Translate('Area mowed'), 'MOVA.Area', 101);
+        $this->RegisterVariableFloat('AreaTotal', $this->Translate('Area total'), 'MOVA.Area', 102);
+        $this->RegisterVariableInteger('RemainingTime', $this->Translate('Remaining (est.)'), 'MOVA.Minutes', 103);
         $this->updateOrderDisplay();
 
         // WebHook für das HTML-Dashboard (in IPSView per URL aufrufbar)
@@ -925,6 +930,10 @@ class MovaLidax extends IPSModule
             'state'    => GetValueFormatted($this->GetIDForIdent('State')),
             'charging' => GetValueFormatted($this->GetIDForIdent('Charging')),
             'firmware' => (string) $this->GetValue('Firmware'),
+            'progress'  => (int) $this->GetValue('Progress'),
+            'areaDone'  => round((float) $this->GetValue('AreaDone'), 1),
+            'areaTotal' => round((float) $this->GetValue('AreaTotal'), 1),
+            'remaining' => (int) $this->GetValue('RemainingTime'),
             'updated'  => $lu > 0 ? date('d.m.Y H:i:s', $lu) : '–',
             'order'      => (string) $this->GetValue('ZoneOrder'),
             'orderItems' => $orderItems,
@@ -957,6 +966,11 @@ body{font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#1c1f23;color:#e7
 .card .val{font-size:clamp(15px,2.6vh,22px);font-weight:600;margin-top:.3vh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bat{height:7px;border-radius:4px;background:#3a3f45;margin-top:.7vh;overflow:hidden}
 .bat>i{display:block;height:100%;background:#4caf50;transition:width .4s}
+.prog{flex:0 0 auto;background:#272b30;border-radius:10px;padding:.8vh 1vw;display:none}
+.prog .ptop{display:flex;justify-content:space-between;align-items:baseline;font-size:clamp(11px,1.5vh,13px);color:#c8d0cb;margin-bottom:.6vh}
+.prog .ptop b{font-weight:600}
+.prog .pbar{height:9px;border-radius:5px;background:#3a3f45;overflow:hidden}
+.prog .pbar>i{display:block;height:100%;background:linear-gradient(90deg,#4caf50,#7ec96a);transition:width .5s}
 .main{flex:1;min-height:0;display:flex;gap:1vw}
 .map{flex:1;min-height:0;order:2;background:#23272b;border-radius:12px;padding:.8vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .map svg{max-width:100%!important;max-height:100%!important;width:auto!important;height:auto!important}
@@ -997,6 +1011,10 @@ select{background:#2f343a;color:#e7ebe6}
   <div class="card"><div class="lbl">Status</div><div class="val" id="state">–</div></div>
   <div class="card"><div class="lbl">Laden</div><div class="val" id="charge">–</div></div>
   <div class="card"><div class="lbl">Firmware</div><div class="val" style="font-size:16px" id="fw">–</div></div>
+ </div>
+ <div class="prog" id="prog">
+  <div class="ptop"><span>Fortschritt</span><span id="progTxt">–</span></div>
+  <div class="pbar"><i id="progBar" style="width:0%"></i></div>
  </div>
  <div class="main split" id="main">
   <div class="grp ctrl">
@@ -1046,6 +1064,15 @@ async function refresh(){
  document.getElementById('state').textContent=d.state||'–';
  document.getElementById('charge').textContent=d.charging||'–';
  document.getElementById('fw').textContent=d.firmware||'–';
+ var pr=document.getElementById('prog');
+ if(d.progress>0||(d.areaTotal&&d.areaTotal>0)){
+  pr.style.display='block';
+  document.getElementById('progBar').style.width=Math.max(0,Math.min(100,d.progress))+'%';
+  var pt='<b>'+d.progress+'%</b>';
+  if(d.areaTotal>0)pt+=' · '+d.areaDone+'/'+d.areaTotal+' m²';
+  if(d.remaining>0)pt+=' · ca. '+d.remaining+' min';
+  document.getElementById('progTxt').innerHTML=pt;
+ }else{pr.style.display='none'}
  var ord=document.getElementById('order');
  if(d.orderItems&&d.orderItems.length){ord.innerHTML=d.orderItems.map(function(t){return '<div>'+t+'</div>'}).join('')}else{ord.textContent='–'}
  document.getElementById('upd').textContent='aktualisiert: '+d.updated;
@@ -1302,6 +1329,41 @@ HTML;
     }
 
     /**
+     * Öffentlich (MOVA_UpdateProgress): Mäh-Fortschritt setzen (aus 1:4-Task-Block).
+     * Prozent + gemähte/Gesamt-Fläche kommen direkt vom Gerät; die Restzeit wird aus
+     * der Fortschrittsrate seit einem Anker geschätzt (keine Geräte-Property dafür).
+     */
+    public function UpdateProgress(float $Percent, float $CurrentArea, float $TotalArea): void
+    {
+        $pct = max(0.0, min(100.0, $Percent));
+        $this->SetValue('Progress', (int) round($pct));
+        $this->SetValue('AreaDone', round($CurrentArea, 2));
+        if ($TotalArea > 0) {
+            $this->SetValue('AreaTotal', round($TotalArea, 2));
+        }
+
+        // Restzeit: lineare Schätzung aus der Rate seit dem Anker.
+        $now    = time();
+        $anchor = json_decode((string) $this->GetBuffer('ProgAnchor'), true);
+        if (!is_array($anchor) || $pct <= 1.0 || $pct + 0.5 < (float) ($anchor['p'] ?? 0)) {
+            // Sitzungsstart / Reset / neuer Auftrag → Anker neu setzen
+            $anchor = ['t' => $now, 'p' => $pct];
+            $this->SetBuffer('ProgAnchor', json_encode($anchor));
+        }
+        if ($pct >= 100.0) {
+            $this->SetValue('RemainingTime', 0);
+            return;
+        }
+        $elapsed = $now - (int) $anchor['t'];
+        $dp      = $pct - (float) $anchor['p'];
+        if ($elapsed >= 30 && $dp >= 1.0) {
+            $remainingMin = (100.0 - $pct) / ($dp / ($elapsed / 60.0));
+            $this->SetValue('RemainingTime', (int) max(0, min(1440, round($remainingMin))));
+        }
+        // sonst: zu wenig Datenbasis — letzten Schätzwert behalten
+    }
+
+    /**
      * Öffentlich (MOVA_GetMqttAuth): liefert dem Live-Kindmodul die aktuellen
      * MQTT-Verbindungsdaten als JSON (inkl. frischem Token). Loggt ggf. ein.
      */
@@ -1412,6 +1474,15 @@ HTML;
         if (!IPS_VariableProfileExists('MOVA.Zones')) {
             IPS_CreateVariableProfile('MOVA.Zones', VARIABLETYPE_INTEGER);
             IPS_SetVariableProfileAssociation('MOVA.Zones', 0, '–', '', -1);
+        }
+        if (!IPS_VariableProfileExists('MOVA.Area')) {
+            IPS_CreateVariableProfile('MOVA.Area', VARIABLETYPE_FLOAT);
+            IPS_SetVariableProfileText('MOVA.Area', '', ' m²');
+            IPS_SetVariableProfileDigits('MOVA.Area', 1);
+        }
+        if (!IPS_VariableProfileExists('MOVA.Minutes')) {
+            IPS_CreateVariableProfile('MOVA.Minutes', VARIABLETYPE_INTEGER);
+            IPS_SetVariableProfileText('MOVA.Minutes', '', ' min');
         }
     }
 }

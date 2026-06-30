@@ -145,12 +145,15 @@ class MovaLidaxLive extends IPSModule
             }
             $siid = (int) ($p['siid'] ?? -1);
             $piid = (int) ($p['piid'] ?? -1);
-            if ($siid === 1 && $piid === 4) { // Pose / Live-Position
-                $pose = $this->decodeRobotPose($p['value'] ?? null);
-                if ($pose !== null) {
-                    $mainID = $this->ReadPropertyInteger('MainInstanceID');
-                    if ($mainID > 0 && IPS_InstanceExists($mainID)) {
-                        @MOVA_UpdatePosition($mainID, $pose['x'], $pose['y'], $pose['h']);
+            if ($siid === 1 && $piid === 4) { // Pose + Mäh-Fortschritt (1:4)
+                $dec    = $this->decodePose1_4($p['value'] ?? null);
+                $mainID = $this->ReadPropertyInteger('MainInstanceID');
+                if ($mainID > 0 && IPS_InstanceExists($mainID)) {
+                    if ($dec['pose'] !== null) {
+                        @MOVA_UpdatePosition($mainID, $dec['pose']['x'], $dec['pose']['y'], $dec['pose']['h']);
+                    }
+                    if ($dec['task'] !== null) {
+                        @MOVA_UpdateProgress($mainID, $dec['task']['percent'], $dec['task']['current'], $dec['task']['total']);
                     }
                 }
             }
@@ -159,15 +162,43 @@ class MovaLidaxLive extends IPSModule
     }
 
     // ------------------------------------------------------------------ //
-    //  Pose-Decoder (Port aus pose_decode.py) — 0xCE-Frame, 20-Bit, ×10
+    //  1:4-Decoder (Port aus pose_coverage.py): Pose (Position) + Task (Fortschritt)
+    //  Frame 0xCE-gerahmt. Längen: 33/44 = Pose(6)+Trace+Task(10) → Task@22;
+    //  22/13 = nur Pose; 11-Alt (kein führendes 0xCE) = nur Task@0.
     // ------------------------------------------------------------------ //
-    private function decodeRobotPose($value): ?array
+    private function decodePose1_4($value): array
     {
-        $data = $this->toByteList($value);
-        if ($data === null || count($data) < 8 || $data[0] !== 0xCE) {
-            return null;
+        $out = ['pose' => null, 'task' => null];
+        $d = $this->toByteList($value);
+        if ($d === null) {
+            return $out;
         }
-        [$b0, $b1, $b2, $b3, $b4, $b5] = [$data[1], $data[2], $data[3], $data[4], $data[5], $data[6]];
+        $n = count($d);
+        if ($n < 8) {
+            return $out;
+        }
+        // Alt-Format: kein führendes 0xCE, Task(10) am Anfang, 0xCE am Ende
+        if ($d[0] !== 0xCE && $d[$n - 1] === 0xCE) {
+            if ($n >= 11) {
+                $out['task'] = $this->parseTask($d, 0);
+            }
+            return $out;
+        }
+        if ($d[0] !== 0xCE) {
+            return $out;
+        }
+        $out['pose'] = $this->parsePose($d, 1);
+        if ($n === 33 || $n === 44) {
+            $out['task'] = $this->parseTask($d, 22);
+        }
+        return $out;
+    }
+
+    /** Pose (6 Bytes ab Offset): 20-Bit-überlappend signed x/y, Heading. ×10 = Karten-Einheiten. */
+    private function parsePose(array $d, int $o): array
+    {
+        $b0 = $d[$o]; $b1 = $d[$o + 1]; $b2 = $d[$o + 2];
+        $b3 = $d[$o + 3]; $b4 = $d[$o + 4]; $b5 = $d[$o + 5];
 
         $rawX = (($b2 << 28) | ($b1 << 20) | ($b0 << 12)) & 0xFFFFFFFF;
         if ($rawX & 0x80000000) {
@@ -181,8 +212,26 @@ class MovaLidaxLive extends IPSModule
         }
         $y = $rawY >> 12;
 
-        $heading = round($b5 / 255.0 * 360.0, 1);
-        return ['x' => $x * 10, 'y' => $y * 10, 'h' => $heading];
+        return ['x' => $x * 10, 'y' => $y * 10, 'h' => round($b5 / 255.0 * 360.0, 1)];
+    }
+
+    /**
+     * Task (10 Bytes ab Offset): [2:4] Prozent (uint16 LE, ×100), [4:7] Gesamtfläche
+     * (uint24 LE, centi-m²), [7:10] gemähte Fläche (uint24 LE, centi-m²).
+     */
+    private function parseTask(array $d, int $o): ?array
+    {
+        if ($o + 9 >= count($d)) {
+            return null;
+        }
+        $rawPercent = $d[$o + 2] | ($d[$o + 3] << 8);
+        $total      = $d[$o + 4] | ($d[$o + 5] << 8) | ($d[$o + 6] << 16);
+        $finish     = $d[$o + 7] | ($d[$o + 8] << 8) | ($d[$o + 9] << 16);
+        return [
+            'percent' => min(100.0, $rawPercent / 100.0),
+            'total'   => $total / 100.0,
+            'current' => $finish / 100.0,
+        ];
     }
 
     /** Wertformen (Byte-Liste oder Base64-String) auf eine Liste von Bytes bringen. */

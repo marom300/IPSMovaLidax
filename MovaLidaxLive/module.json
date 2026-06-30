@@ -4,8 +4,7 @@
     "type": 3,
     "vendor": "Eigenentwicklung",
     "aliases": [
-        "MOVA LiDAX Live",
-        "MOVA Live-Position"
+        "MOVA LiDAX Live"
     ],
     "url": "https://github.com/marom300/IPSMovaLidax",
     "parentRequirements": [ "{043EA491-0325-4ADD-8FC2-A30C8EEB4D3F}" ],
