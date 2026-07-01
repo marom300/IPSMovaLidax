@@ -94,6 +94,57 @@
         },
         {
             "type": "ExpansionPanel",
+            "caption": "Dashboard: Steuer-Buttons (Reihenfolge & Sichtbarkeit)",
+            "items": [
+                {
+                    "type": "Label",
+                    "caption": "Reihenfolge der Buttons = Reihenfolge in der Liste. 'Anzeigen' abwählen blendet einen Button aus, 'Beschriftung' leer = Standardname. Zum Umsortieren eine Zeile löschen und unten neu hinzufügen."
+                },
+                {
+                    "type": "List",
+                    "name": "ControlButtons",
+                    "caption": "Steuer-Buttons",
+                    "rowCount": 8,
+                    "add": true,
+                    "delete": true,
+                    "columns": [
+                        {
+                            "caption": "Aktion",
+                            "name": "Key",
+                            "width": "200px",
+                            "add": "all",
+                            "edit": {
+                                "type": "Select",
+                                "options": [
+                                    { "caption": "Gesamtes Gebiet", "value": "all" },
+                                    { "caption": "Begrenzung", "value": "edge" },
+                                    { "caption": "Pause", "value": "pause" },
+                                    { "caption": "Stop", "value": "stop" },
+                                    { "caption": "Andocken", "value": "dock" },
+                                    { "caption": "Stopp & Heim", "value": "home" }
+                                ]
+                            }
+                        },
+                        {
+                            "caption": "Beschriftung (optional)",
+                            "name": "Label",
+                            "width": "auto",
+                            "add": "",
+                            "edit": { "type": "ValidationTextBox" }
+                        },
+                        {
+                            "caption": "Anzeigen",
+                            "name": "Show",
+                            "width": "90px",
+                            "add": true,
+                            "edit": { "type": "CheckBox" }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
             "caption": "Karten-Darstellung (Größe & Schrift)",
             "items": [
                 {

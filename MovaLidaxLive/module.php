@@ -127,11 +127,21 @@ class MovaLidaxLive extends IPSModule
         if (!is_array($d)) {
             return '';
         }
+        $method = (string) ($d['method'] ?? '');
+
+        // Ereignis (event_occured): params ist ein Objekt {siid,eiid,arguments}
+        if ($method === 'event_occured') {
+            $ev = $d['params'] ?? null;
+            if (is_array($ev) && (int) ($ev['siid'] ?? -1) === 4 && (int) ($ev['eiid'] ?? -1) === 1) {
+                // Auftragsende (4:1) → Arbeitsprotokoll-Eintrag
+                $this->handleMissionEvent(is_array($ev['arguments'] ?? null) ? $ev['arguments'] : []);
+            }
+            return '';
+        }
+
         $params = null;
-        if (($d['method'] ?? '') === 'properties_changed') {
+        if ($method === 'properties_changed' || $method === 'props') {
             $params = $d['params'] ?? null;
-        } elseif (isset($d['params'])) {
-            $params = $d['params'];
         } elseif (isset($d['siid'])) {
             $params = [$d];
         }
@@ -173,6 +183,35 @@ class MovaLidaxLive extends IPSModule
             @MOVA_UpdateLiveStatus($mainID, $st, $bat, $chg);
         }
         return '';
+    }
+
+    /**
+     * Auftragsende-Event (4:1) → Arbeitsprotokoll-Eintrag ans Hauptmodul.
+     * Argumente (piid): 1=Prozent, 2=Dauer(min), 3=Fläche(centi-m²), 7=Status
+     * (1=fertig/2=unvollst./3=unterbrochen), 8=Startzeit, 14=geplante m², 16=Karte, 60=Grund(101=Akku).
+     */
+    private function handleMissionEvent(array $args): void
+    {
+        $f = [];
+        foreach ($args as $a) {
+            if (is_array($a) && isset($a['piid'])) {
+                $f[(int) $a['piid']] = $a['value'] ?? null;
+            }
+        }
+        $entry = [
+            'ts'      => (int) ($f[8] ?? 0),
+            'dur'     => (int) ($f[2] ?? 0),
+            'area'    => isset($f[3]) ? ((float) $f[3]) / 100.0 : 0.0,
+            'planned' => (int) ($f[14] ?? 0),
+            'pct'     => (int) ($f[1] ?? 0),
+            'status'  => (int) ($f[7] ?? 0),
+            'reason'  => (int) ($f[60] ?? 0),
+            'map'     => (string) ($f[16] ?? ''),
+        ];
+        $mainID = $this->ReadPropertyInteger('MainInstanceID');
+        if ($mainID > 0 && IPS_InstanceExists($mainID)) {
+            @MOVA_LogMission($mainID, json_encode($entry));
+        }
     }
 
     // ------------------------------------------------------------------ //

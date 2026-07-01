@@ -46,6 +46,15 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyString('DashboardLayout', 'split'); // split | right | bottom
         // Eigene Zonennamen (überschreiben die Cloud-Defaults) — [{ZoneID,Name}, ...]
         $this->RegisterPropertyString('ZoneNames', '[]');
+        // Anordnung/Sichtbarkeit der Steuer-Buttons im Dashboard (Reihenfolge = Listenreihenfolge)
+        $this->RegisterPropertyString('ControlButtons', json_encode([
+            ['Key' => 'all',   'Label' => '', 'Show' => true],
+            ['Key' => 'edge',  'Label' => '', 'Show' => true],
+            ['Key' => 'pause', 'Label' => '', 'Show' => true],
+            ['Key' => 'stop',  'Label' => '', 'Show' => true],
+            ['Key' => 'dock',  'Label' => '', 'Show' => true],
+            ['Key' => 'home',  'Label' => '', 'Show' => true],
+        ]));
 
         // Token-/Geräte-Cache
         $this->RegisterAttributeString('AccessToken', '');
@@ -65,6 +74,7 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeString('MapRaw', '');      // dekodierte Karte (JSON) für Live-Neurender
         $this->RegisterAttributeString('ZoneQueue', '[]'); // Mäh-Reihenfolge [zoneId,...]
         $this->RegisterAttributeString('ConnHash', '');    // Hash der Verbindungsdaten (Cache-Invalidierung)
+        $this->RegisterAttributeString('WorkLogData', '[]'); // Arbeitsprotokoll (Mäh-Sitzungen)
 
         $this->RegisterTimer('Poll', 0, 'MOVA_Poll($_IPS[\'TARGET\']);');
     }
@@ -109,6 +119,9 @@ class MovaLidax extends IPSModule
         $this->RegisterVariableFloat('AreaDone', $this->Translate('Area mowed'), 'MOVA.Area', 101);
         $this->RegisterVariableFloat('AreaTotal', $this->Translate('Area total'), 'MOVA.Area', 102);
         $this->RegisterVariableInteger('RemainingTime', $this->Translate('Remaining (est.)'), 'MOVA.Minutes', 103);
+        // Arbeitsprotokoll (frei platzierbare HTML-Box, z. B. in IPSView)
+        $this->RegisterVariableString('WorkLog', $this->Translate('Work log'), '~HTMLBox', 110);
+        $this->renderWorkLog();
         $this->updateOrderDisplay();
 
         // WebHook für das HTML-Dashboard (in IPSView per URL aufrufbar)
@@ -966,7 +979,27 @@ class MovaLidax extends IPSModule
             'zones'    => json_decode($this->ReadAttributeString('MapZones'), true) ?: [],
             'allow'    => (bool) $this->ReadPropertyBoolean('AllowControl'),
             'layout'   => $this->ReadPropertyString('DashboardLayout'),
+            'controls' => $this->controlButtonList(),
         ];
+    }
+
+    /** Sichtbare Steuer-Buttons in konfigurierter Reihenfolge (fürs Dashboard). */
+    private function controlButtonList(): array
+    {
+        $cfg = json_decode($this->ReadPropertyString('ControlButtons'), true);
+        $out = [];
+        if (is_array($cfg)) {
+            foreach ($cfg as $b) {
+                if (!is_array($b) || !($b['Show'] ?? true)) {
+                    continue;
+                }
+                $key = (string) ($b['Key'] ?? '');
+                if ($key !== '') {
+                    $out[] = ['key' => $key, 'label' => (string) ($b['Label'] ?? '')];
+                }
+            }
+        }
+        return $out;
     }
 
     private function buildDashboardHtml(): string
@@ -1047,14 +1080,7 @@ select{background:#2f343a;color:#e7ebe6}
  <div class="main split" id="main">
   <div class="grp ctrl">
    <div class="sec"><h2>Steuerung</h2>
-    <div class="btns">
-     <button class="go" onclick="cmd('all')">Gesamtes Gebiet</button>
-     <button class="go" onclick="cmd('edge')">Begrenzung</button>
-     <button onclick="cmd('pause')">Pause</button>
-     <button class="stop" onclick="cmd('stop')">Stop</button>
-     <button onclick="cmd('dock')">Andocken</button>
-     <button class="stop" onclick="cmd('home')">Stopp &amp; Heim</button>
-    </div>
+    <div class="btns" id="ctrlBtns"></div>
    </div>
    <div class="sec"><div class="row">
      <button onclick="cmd('poll')">Status aktualisieren</button>
@@ -1081,6 +1107,9 @@ select{background:#2f343a;color:#e7ebe6}
 <script>
 var selZone=0,zlist=[];
 function toast(msg,ok){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(ok?'ok':'err');clearTimeout(window._tt);window._tt=setTimeout(function(){t.className='toast'},3500);}
+var CTRL={all:{t:'Gesamtes Gebiet',c:'go'},edge:{t:'Begrenzung',c:'go'},pause:{t:'Pause',c:''},stop:{t:'Stop',c:'stop'},dock:{t:'Andocken',c:''},home:{t:'Stopp & Heim',c:'stop'}};
+var ctrlKey='';
+function renderControls(list){var el=document.getElementById('ctrlBtns');if(!el)return;el.innerHTML='';(list||[]).forEach(function(b){var m=CTRL[b.key];if(!m)return;var btn=document.createElement('button');btn.className=m.c;btn.textContent=b.label||m.t;btn.onclick=function(){cmd(b.key)};el.appendChild(btn);});}
 function zv(){return selZone}
 function renderZones(){var el=document.getElementById('zoneList');if(!el)return;el.innerHTML='';if(selZone===0&&zlist.length)selZone=zlist[0].id;zlist.forEach(function(z){var b=document.createElement('div');b.className='zi'+(z.id==selZone?' sel':'');b.textContent=z.name;b.onclick=function(){selZone=z.id;renderZones()};el.appendChild(b)})}
 function addSel(){if(selZone>0){cmd('queueadd&id='+selZone);selZone=0;renderZones()}}
@@ -1113,6 +1142,8 @@ async function refresh(){
  document.getElementById('main').className='main '+(d.layout||'split');
  var k=JSON.stringify(d.zones||[]);
  if(k!==zonesKey){zonesKey=k;zlist=d.zones||[];renderZones();}
+ var ck=JSON.stringify(d.controls||[]);
+ if(ck!==ctrlKey){ctrlKey=ck;renderControls(d.controls);}
 }
 refresh(); setInterval(refresh,5000);
 </script></body></html>
@@ -1411,6 +1442,74 @@ HTML;
         }
         $this->SetValue('Online', true);
         $this->SetValue('LastUpdate', time());
+    }
+
+    /**
+     * Öffentlich (MOVA_LogMission): abgeschlossene Mäh-Sitzung ins Arbeitsprotokoll
+     * aufnehmen (Live-Kind bei Event 4:1). Doppelte (gleiche Startzeit) werden übersprungen.
+     */
+    public function LogMission(string $Json): void
+    {
+        $e = json_decode($Json, true);
+        if (!is_array($e)) {
+            return;
+        }
+        $log = json_decode($this->ReadAttributeString('WorkLogData'), true);
+        if (!is_array($log)) {
+            $log = [];
+        }
+        $ts = (int) ($e['ts'] ?? 0);
+        foreach ($log as $x) {
+            if ($ts > 0 && (int) ($x['ts'] ?? 0) === $ts) {
+                return; // schon protokolliert
+            }
+        }
+        array_unshift($log, $e);
+        if (count($log) > 50) {
+            $log = array_slice($log, 0, 50);
+        }
+        $this->WriteAttributeString('WorkLogData', json_encode($log));
+        $this->renderWorkLog();
+        $this->LogMessage('Arbeitsprotokoll: Sitzung ergänzt (' . date('d.m.Y H:i', $ts > 0 ? $ts : time()) . ')', KL_NOTIFY);
+    }
+
+    /** Rendert das Arbeitsprotokoll als HTML-Tabelle in die WorkLog-Variable. */
+    private function renderWorkLog(): void
+    {
+        $log = json_decode($this->ReadAttributeString('WorkLogData'), true);
+        if (!is_array($log)) {
+            $log = [];
+        }
+        $statusMap = [1 => 'Abgeschlossen', 2 => 'Unvollständig', 3 => 'Unterbrochen'];
+        $rows = '';
+        foreach ($log as $e) {
+            $ts   = (int) ($e['ts'] ?? 0);
+            $when = $ts > 0 ? date('d.m.Y H:i', $ts) : '–';
+            $dur  = (int) ($e['dur'] ?? 0);
+            $area = round((float) ($e['area'] ?? 0), 1);
+            $pct  = (int) round((float) ($e['pct'] ?? 0));
+            $st   = $statusMap[(int) ($e['status'] ?? 0)] ?? '–';
+            if ((int) ($e['reason'] ?? 0) === 101) {
+                $st .= ' (Akku)';
+            }
+            $rows .= '<tr><td>' . $when . '</td><td>' . $dur . ' min</td><td>' . $area
+                   . ' m²</td><td>' . $pct . '%</td><td>' . htmlspecialchars($st, ENT_QUOTES) . '</td></tr>';
+        }
+        if ($rows === '') {
+            $rows = '<tr><td colspan="5" style="text-align:center;color:#8a938e;padding:10px">'
+                  . $this->Translate('No entries yet — filled after the next completed mowing session.')
+                  . '</td></tr>';
+        }
+        $html = '<style>.mwl{font-family:Segoe UI,Arial,sans-serif;background:#23272b;border-radius:10px;'
+              . 'padding:12px;color:#e7ebe6}.mwl table{width:100%;border-collapse:collapse;font-size:14px}'
+              . '.mwl th{color:#9aa3a0;text-align:left;font-weight:600;padding:5px 8px;border-bottom:2px solid #333}'
+              . '.mwl td{padding:5px 8px;border-bottom:1px solid #2c3338}.mwl tr:last-child td{border-bottom:none}'
+              . '.mwl h3{margin:0 0 8px;font-size:16px}</style>'
+              . '<div class="mwl"><h3>' . $this->Translate('Work log') . '</h3><table>'
+              . '<tr><th>' . $this->Translate('Date') . '</th><th>' . $this->Translate('Duration')
+              . '</th><th>' . $this->Translate('Area') . '</th><th>' . $this->Translate('Progress')
+              . '</th><th>' . $this->Translate('Status') . '</th></tr>' . $rows . '</table></div>';
+        $this->SetValue('WorkLog', $html);
     }
 
     /**
