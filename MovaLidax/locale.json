@@ -31,6 +31,7 @@
             "Mow order (start)": "Reihenfolge mähen",
             "Clear order": "Reihenfolge leeren",
             "The mow order is empty.": "Die Mäh-Reihenfolge ist leer.",
+            "%s added to mow order": "%s zur Reihenfolge hinzugefügt",
             "Map": "Karte",
             "Robot X": "Roboter X",
             "Robot Y": "Roboter Y",

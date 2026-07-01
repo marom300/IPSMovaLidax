@@ -862,7 +862,17 @@ class MovaLidax extends IPSModule
             $anchor = $nx < -0.3 ? 'end' : ($nx > 0.3 ? 'start' : 'middle');
             $tw     = mb_strlen($z['name']) * $charW;
 
-            $off = $labelSize * 1.7 + 22;
+            // Wie weit reicht die Zone vom Schwerpunkt in Richtung (nx,ny)? Label knapp
+            // dahinter setzen → große Zonen (z. B. Hauptzone) schieben ihr Label weiter raus.
+            $reach = 0.0;
+            foreach ($z['path'] as $pt) {
+                $sp   = $tx($pt);
+                $proj = ($sp[0] - $dot[0]) * $nx + ($sp[1] - $dot[1]) * $ny;
+                if ($proj > $reach) {
+                    $reach = $proj;
+                }
+            }
+            $off = $reach + $labelSize * 1.0 + 14;
             $lx  = $dot[0] + $nx * $off;
             $ly  = $dot[1] + $ny * $off;
 
@@ -1004,6 +1014,7 @@ class MovaLidax extends IPSModule
                     $q = $this->getQueue();
                     $q[] = $zid;
                     $this->setQueue($q);
+                    echo sprintf($this->Translate('%s added to mow order'), $this->zoneName($zid));
                 }
                 return true;
             case 'queuerun':   return $this->QueueRun();
@@ -1118,6 +1129,10 @@ select{background:#2f343a;color:#e7ebe6}
 .zlist{display:flex;flex-direction:column;gap:.5vh}
 .zi{background:#2f343a;color:#e7ebe6;border:2px solid transparent;border-radius:9px;padding:clamp(6px,1.1vh,10px) 10px;cursor:pointer;text-align:center;font-size:clamp(12px,1.7vh,15px)}
 .zi.sel{border-color:#7ec96a;background:#36433a}
+.zrow{display:flex;gap:.5vh;align-items:stretch}
+.zrow .zi{flex:1;min-width:0}
+.zadd{flex:0 0 auto;width:auto;padding:0 12px;background:#3a4047;color:#e7ebe6;border:none;border-radius:9px;cursor:pointer;font-size:clamp(14px,2vh,18px);font-weight:600;line-height:1}
+.zadd:hover{background:#4a9140}
 .order{font-size:clamp(12px,1.6vh,14px);color:#bcd0b0;background:#23282c;border-radius:8px;padding:.6vh .8vh}
 .order div{padding:2px 2px;border-bottom:1px solid #2c3338}
 .order div:last-child{border-bottom:none}
@@ -1172,7 +1187,7 @@ var ZBTN={zonestart:{t:'Diese Zone mähen',c:'go',f:function(){cmd('zone&id='+zv
 var zbtnKey='';
 function renderZoneBtns(list){var el=document.getElementById('zoneBtns');if(!el)return;el.innerHTML='';(list||[]).forEach(function(b){var m=ZBTN[b.key];if(!m)return;var btn=document.createElement('button');btn.className=m.c;btn.textContent=b.label||m.t;btn.onclick=m.f;el.appendChild(btn);});}
 function zv(){return selZone}
-function renderZones(){var el=document.getElementById('zoneList');if(!el)return;el.innerHTML='';if(selZone===0&&zlist.length)selZone=zlist[0].id;zlist.forEach(function(z){var b=document.createElement('div');b.className='zi'+(z.id==selZone?' sel':'');b.textContent=z.name;b.onclick=function(){selZone=z.id;renderZones()};el.appendChild(b)})}
+function renderZones(){var el=document.getElementById('zoneList');if(!el)return;el.innerHTML='';if(selZone===0&&zlist.length)selZone=zlist[0].id;zlist.forEach(function(z){var row=document.createElement('div');row.className='zrow';var b=document.createElement('div');b.className='zi'+(z.id==selZone?' sel':'');b.textContent=z.name;b.onclick=function(){selZone=z.id;renderZones()};var p=document.createElement('button');p.className='zadd';p.textContent='+';p.title='Zur Reihenfolge hinzufügen';p.onclick=function(ev){ev.stopPropagation();cmd('queueadd&id='+z.id);};row.appendChild(b);row.appendChild(p);el.appendChild(row)})}
 function addSel(){if(selZone>0){cmd('queueadd&id='+selZone);selZone=0;renderZones()}}
 function clearSel(){selZone=0;cmd('queueclear');renderZones()}
 async function cmd(a){try{var r=await (await fetch('?action='+a)).json();toast(r.msg||(r.ok?'Befehl gesendet':'Fehlgeschlagen'),r.ok);}catch(e){toast('Verbindungsfehler',false);} setTimeout(refresh,600)}
