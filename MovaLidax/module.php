@@ -760,14 +760,18 @@ class MovaLidax extends IPSModule
         $target = 900;
         $pad = 24;
         $header = max(46, $legendSize + 30); // Platz oben für die Legende
-        $scale = ($target - 2 * $pad) / max($w, $h);
-        $width = $w * $scale + 2 * $pad;
-        $height = $header + $h * $scale + 2 * $pad;
+        // Zusätzlicher Rand, damit die ausgelagerten Zonen-Beschriftungen Platz haben
+        $labelMargin = (int) round($labelSize * 2.4);
+        $scale  = ($target - 2 * $pad) / max($w, $h);
+        $offX   = $pad + $labelMargin;
+        $offTop = $header + $labelMargin;
+        $width  = $w * $scale + 2 * $offX;
+        $height = $offTop + $h * $scale + $pad + $labelMargin;
 
-        $tx = function (array $pt) use ($minx, $maxy, $scale, $pad, $header) {
+        $tx = function (array $pt) use ($minx, $maxy, $scale, $offX, $offTop) {
             return [
-                $pad + ($pt[0] - $minx) * $scale,
-                $header + $pad + ($maxy - $pt[1]) * $scale, // Y spiegeln, unter der Legende
+                $offX + ($pt[0] - $minx) * $scale,
+                $offTop + ($maxy - $pt[1]) * $scale, // Y spiegeln, unter der Legende
             ];
         };
         $points = function (array $poly) use ($tx) {
@@ -817,7 +821,10 @@ class MovaLidax extends IPSModule
             $svg .= '<polyline points="' . $points($poly) . '" fill="none" stroke="' . $contourCol . '" '
                   . 'stroke-width="2.5" stroke-linejoin="round"/>';
         }
-        // Zonen-Namen im Schwerpunkt (mit weißem Halo für Lesbarkeit)
+        // Zonen-Namen als Callouts AUSSERHALB der Zonen: Punkt am Schwerpunkt + Linie zur
+        // nach außen ausgelagerten Beschriftung. So bleiben Zonen und Sperrflächen sichtbar.
+        $cCenter = $tx([($minx + $maxx) / 2, ($miny + $maxy) / 2]);
+        $halo = max(2, (int) round($labelSize * 0.22));
         foreach ($zones as $z) {
             $cx = 0;
             $cy = 0;
@@ -826,12 +833,38 @@ class MovaLidax extends IPSModule
                 $cx += $pt[0];
                 $cy += $pt[1];
             }
-            $ctr = $tx([$cx / $n, $cy / $n]);
-            $label = htmlspecialchars($z['name'], ENT_QUOTES);
-            $halo = max(2, (int) round($labelSize * 0.2));
-            $svg .= '<text x="' . round($ctr[0], 1) . '" y="' . round($ctr[1] + $labelSize * 0.35, 1) . '" '
-                  . 'font-size="' . $labelSize . '" font-weight="700" fill="#243018" text-anchor="middle" '
-                  . 'paint-order="stroke" stroke="#ffffff" stroke-width="' . $halo . '" stroke-opacity="0.8">'
+            $dot = $tx([$cx / $n, $cy / $n]);
+
+            // Richtung vom Kartenmittelpunkt nach außen bestimmen
+            $vx = $dot[0] - $cCenter[0];
+            $vy = $dot[1] - $cCenter[1];
+            $len = sqrt($vx * $vx + $vy * $vy);
+            if ($len < 1) {
+                $vx = 0;
+                $vy = -1;
+                $len = 1;
+            }
+            $nx = $vx / $len;
+            $ny = $vy / $len;
+
+            $off = $labelSize * 1.7 + 22;
+            $lx = $dot[0] + $nx * $off;
+            $ly = $dot[1] + $ny * $off;
+            // innerhalb der Zeichenfläche halten
+            $lx = max($labelSize * 0.4, min($width - $labelSize * 0.4, $lx));
+            $ly = max($labelMargin * 0.6, min($height - 6, $ly));
+
+            $anchor = $nx < -0.3 ? 'end' : ($nx > 0.3 ? 'start' : 'middle');
+            $label  = htmlspecialchars($z['name'], ENT_QUOTES);
+
+            $svg .= '<line x1="' . round($dot[0], 1) . '" y1="' . round($dot[1], 1) . '" '
+                  . 'x2="' . round($lx, 1) . '" y2="' . round($ly, 1) . '" '
+                  . 'stroke="' . $contourCol . '" stroke-width="1.4" stroke-opacity="0.75"/>';
+            $svg .= '<circle cx="' . round($dot[0], 1) . '" cy="' . round($dot[1], 1) . '" r="3.4" '
+                  . 'fill="' . $contourCol . '" stroke="#ffffff" stroke-width="1" stroke-opacity="0.7"/>';
+            $svg .= '<text x="' . round($lx, 1) . '" y="' . round($ly + $labelSize * 0.35, 1) . '" '
+                  . 'font-size="' . $labelSize . '" font-weight="700" fill="#243018" text-anchor="' . $anchor . '" '
+                  . 'paint-order="stroke" stroke="#ffffff" stroke-width="' . $halo . '" stroke-opacity="0.85">'
                   . $label . '</text>';
         }
 
