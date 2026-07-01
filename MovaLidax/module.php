@@ -760,13 +760,25 @@ class MovaLidax extends IPSModule
         $target = 900;
         $pad = 24;
         $header = max(46, $legendSize + 30); // Platz oben für die Legende
-        // Zusätzlicher Rand, damit die ausgelagerten Zonen-Beschriftungen Platz haben
-        $labelMargin = (int) round($labelSize * 2.4);
+
+        // Breiteste Beschriftung grob schätzen (0,62 em/Zeichen) → Rand danach bemessen,
+        // damit ausgelagerte Labels bei JEDER Karte/Namenlänge komplett hineinpassen.
+        $charW    = $labelSize * 0.62;
+        $maxTextW = 0.0;
+        foreach ($zones as $z) {
+            $tw = mb_strlen($z['name']) * $charW;
+            if ($tw > $maxTextW) {
+                $maxTextW = $tw;
+            }
+        }
+        $marginX = (int) round(max($labelSize * 2.2, $maxTextW + $labelSize));
+        $marginY = (int) round($labelSize * 2.4);
+
         $scale  = ($target - 2 * $pad) / max($w, $h);
-        $offX   = $pad + $labelMargin;
-        $offTop = $header + $labelMargin;
+        $offX   = $pad + $marginX;
+        $offTop = $header + $marginY;
         $width  = $w * $scale + 2 * $offX;
-        $height = $offTop + $h * $scale + $pad + $labelMargin;
+        $height = $offTop + $h * $scale + $pad + $marginY;
 
         $tx = function (array $pt) use ($minx, $maxy, $scale, $offX, $offTop) {
             return [
@@ -847,15 +859,25 @@ class MovaLidax extends IPSModule
             $nx = $vx / $len;
             $ny = $vy / $len;
 
-            $off = $labelSize * 1.7 + 22;
-            $lx = $dot[0] + $nx * $off;
-            $ly = $dot[1] + $ny * $off;
-            // innerhalb der Zeichenfläche halten
-            $lx = max($labelSize * 0.4, min($width - $labelSize * 0.4, $lx));
-            $ly = max($labelMargin * 0.6, min($height - 6, $ly));
-
             $anchor = $nx < -0.3 ? 'end' : ($nx > 0.3 ? 'start' : 'middle');
-            $label  = htmlspecialchars($z['name'], ENT_QUOTES);
+            $tw     = mb_strlen($z['name']) * $charW;
+
+            $off = $labelSize * 1.7 + 22;
+            $lx  = $dot[0] + $nx * $off;
+            $ly  = $dot[1] + $ny * $off;
+
+            // Kompletten Text (je nach Anker) im Rahmen halten – nichts abschneiden
+            $edge = 6;
+            if ($anchor === 'start') {           // Text läuft nach rechts
+                $lx = max($edge, min($width - $edge - $tw, $lx));
+            } elseif ($anchor === 'end') {       // Text läuft nach links
+                $lx = min($width - $edge, max($edge + $tw, $lx));
+            } else {                             // zentriert
+                $lx = max($edge + $tw / 2, min($width - $edge - $tw / 2, $lx));
+            }
+            $ly = max($labelSize, min($height - $labelSize * 0.5, $ly));
+
+            $label = htmlspecialchars($z['name'], ENT_QUOTES);
 
             $svg .= '<line x1="' . round($dot[0], 1) . '" y1="' . round($dot[1], 1) . '" '
                   . 'x2="' . round($lx, 1) . '" y2="' . round($ly, 1) . '" '
