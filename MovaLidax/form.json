@@ -94,11 +94,15 @@
         },
         {
             "type": "ExpansionPanel",
-            "caption": "Dashboard: Steuer-Buttons (Reihenfolge & Sichtbarkeit)",
+            "caption": "Dashboard: Buttons (Reihenfolge & Sichtbarkeit)",
             "items": [
                 {
                     "type": "Label",
                     "caption": "Reihenfolge der Buttons = Reihenfolge in der Liste. 'Anzeigen' abwählen blendet einen Button aus, 'Beschriftung' leer = Standardname. Zum Umsortieren eine Zeile löschen und unten neu hinzufügen."
+                },
+                {
+                    "type": "Label",
+                    "caption": "Steuer-Buttons (Panel 'Steuerung'):"
                 },
                 {
                     "type": "List",
@@ -122,6 +126,49 @@
                                     { "caption": "Stop", "value": "stop" },
                                     { "caption": "Andocken", "value": "dock" },
                                     { "caption": "Stopp & Heim", "value": "home" }
+                                ]
+                            }
+                        },
+                        {
+                            "caption": "Beschriftung (optional)",
+                            "name": "Label",
+                            "width": "auto",
+                            "add": "",
+                            "edit": { "type": "ValidationTextBox" }
+                        },
+                        {
+                            "caption": "Anzeigen",
+                            "name": "Show",
+                            "width": "90px",
+                            "add": true,
+                            "edit": { "type": "CheckBox" }
+                        }
+                    ]
+                },
+                {
+                    "type": "Label",
+                    "caption": "Zonen-Buttons (Panel 'Zonen mähen'):"
+                },
+                {
+                    "type": "List",
+                    "name": "ZoneButtons",
+                    "caption": "Zonen-Buttons",
+                    "rowCount": 6,
+                    "add": true,
+                    "delete": true,
+                    "columns": [
+                        {
+                            "caption": "Aktion",
+                            "name": "Key",
+                            "width": "220px",
+                            "add": "zonestart",
+                            "edit": {
+                                "type": "Select",
+                                "options": [
+                                    { "caption": "Diese Zone mähen", "value": "zonestart" },
+                                    { "caption": "+ zur Reihenfolge", "value": "queueadd" },
+                                    { "caption": "Reihenfolge mähen", "value": "queuerun" },
+                                    { "caption": "Reihenfolge leeren", "value": "queueclear" }
                                 ]
                             }
                         },

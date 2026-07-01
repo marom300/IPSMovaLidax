@@ -55,6 +55,13 @@ class MovaLidax extends IPSModule
             ['Key' => 'dock',  'Label' => '', 'Show' => true],
             ['Key' => 'home',  'Label' => '', 'Show' => true],
         ]));
+        // Anordnung/Sichtbarkeit der Zonen-Buttons im Dashboard
+        $this->RegisterPropertyString('ZoneButtons', json_encode([
+            ['Key' => 'zonestart',  'Label' => '', 'Show' => true],
+            ['Key' => 'queueadd',   'Label' => '', 'Show' => true],
+            ['Key' => 'queuerun',   'Label' => '', 'Show' => true],
+            ['Key' => 'queueclear', 'Label' => '', 'Show' => true],
+        ]));
 
         // Token-/Geräte-Cache
         $this->RegisterAttributeString('AccessToken', '');
@@ -978,15 +985,16 @@ class MovaLidax extends IPSModule
             'map'        => (string) $this->GetValue('Map'),
             'zones'    => json_decode($this->ReadAttributeString('MapZones'), true) ?: [],
             'allow'    => (bool) $this->ReadPropertyBoolean('AllowControl'),
-            'layout'   => $this->ReadPropertyString('DashboardLayout'),
-            'controls' => $this->controlButtonList(),
+            'layout'      => $this->ReadPropertyString('DashboardLayout'),
+            'controls'    => $this->buttonList('ControlButtons'),
+            'zoneButtons' => $this->buttonList('ZoneButtons'),
         ];
     }
 
-    /** Sichtbare Steuer-Buttons in konfigurierter Reihenfolge (fürs Dashboard). */
-    private function controlButtonList(): array
+    /** Sichtbare Buttons einer Button-Property in konfigurierter Reihenfolge (fürs Dashboard). */
+    private function buttonList(string $property): array
     {
-        $cfg = json_decode($this->ReadPropertyString('ControlButtons'), true);
+        $cfg = json_decode($this->ReadPropertyString($property), true);
         $out = [];
         if (is_array($cfg)) {
             foreach ($cfg as $b) {
@@ -1092,12 +1100,7 @@ select{background:#2f343a;color:#e7ebe6}
   <div class="grp zones">
    <div class="sec"><h2>Zonen mähen</h2>
     <div class="zlist" id="zoneList"></div>
-    <div class="row">
-     <button class="go" onclick="cmd('zone&id='+zv())">Diese Zone mähen</button>
-     <button onclick="addSel()">+ zur Reihenfolge</button>
-     <button class="go" onclick="cmd('queuerun')">Reihenfolge mähen</button>
-     <button onclick="clearSel()">Leeren</button>
-    </div>
+    <div class="row" id="zoneBtns"></div>
     <div class="order" id="order">–</div>
    </div>
   </div>
@@ -1110,6 +1113,9 @@ function toast(msg,ok){var t=document.getElementById('toast');t.textContent=msg;
 var CTRL={all:{t:'Gesamtes Gebiet',c:'go'},edge:{t:'Begrenzung',c:'go'},pause:{t:'Pause',c:''},stop:{t:'Stop',c:'stop'},dock:{t:'Andocken',c:''},home:{t:'Stopp & Heim',c:'stop'}};
 var ctrlKey='';
 function renderControls(list){var el=document.getElementById('ctrlBtns');if(!el)return;el.innerHTML='';(list||[]).forEach(function(b){var m=CTRL[b.key];if(!m)return;var btn=document.createElement('button');btn.className=m.c;btn.textContent=b.label||m.t;btn.onclick=function(){cmd(b.key)};el.appendChild(btn);});}
+var ZBTN={zonestart:{t:'Diese Zone mähen',c:'go',f:function(){cmd('zone&id='+zv())}},queueadd:{t:'+ zur Reihenfolge',c:'',f:function(){addSel()}},queuerun:{t:'Reihenfolge mähen',c:'go',f:function(){cmd('queuerun')}},queueclear:{t:'Leeren',c:'',f:function(){clearSel()}}};
+var zbtnKey='';
+function renderZoneBtns(list){var el=document.getElementById('zoneBtns');if(!el)return;el.innerHTML='';(list||[]).forEach(function(b){var m=ZBTN[b.key];if(!m)return;var btn=document.createElement('button');btn.className=m.c;btn.textContent=b.label||m.t;btn.onclick=m.f;el.appendChild(btn);});}
 function zv(){return selZone}
 function renderZones(){var el=document.getElementById('zoneList');if(!el)return;el.innerHTML='';if(selZone===0&&zlist.length)selZone=zlist[0].id;zlist.forEach(function(z){var b=document.createElement('div');b.className='zi'+(z.id==selZone?' sel':'');b.textContent=z.name;b.onclick=function(){selZone=z.id;renderZones()};el.appendChild(b)})}
 function addSel(){if(selZone>0){cmd('queueadd&id='+selZone);selZone=0;renderZones()}}
@@ -1144,6 +1150,8 @@ async function refresh(){
  if(k!==zonesKey){zonesKey=k;zlist=d.zones||[];renderZones();}
  var ck=JSON.stringify(d.controls||[]);
  if(ck!==ctrlKey){ctrlKey=ck;renderControls(d.controls);}
+ var zk=JSON.stringify(d.zoneButtons||[]);
+ if(zk!==zbtnKey){zbtnKey=zk;renderZoneBtns(d.zoneButtons);}
 }
 refresh(); setInterval(refresh,5000);
 </script></body></html>
