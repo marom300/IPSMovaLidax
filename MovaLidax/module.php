@@ -885,7 +885,8 @@ class MovaLidax extends IPSModule
             } else {                             // zentriert
                 $lx = max($edge + $tw / 2, min($width - $edge - $tw / 2, $lx));
             }
-            $ly = max($labelSize, min($height - $labelSize * 0.5, $ly));
+            // untere Grenze = unterhalb der Legende (oben), damit Labels nicht hineinrutschen
+            $ly = max($header + $labelSize * 0.9, min($height - $labelSize * 0.5, $ly));
 
             $label = htmlspecialchars($z['name'], ENT_QUOTES);
 
@@ -1018,8 +1019,8 @@ class MovaLidax extends IPSModule
                 }
                 return true;
             case 'queuerun':   return $this->QueueRun();
-            case 'queueclear': $this->QueueClear(); return true;
-            case 'poll':       $this->Poll();       return true;
+            case 'queueclear': $this->QueueClear(); echo $this->Translate('Mow order cleared'); return true;
+            case 'poll':       $this->Poll();       echo $this->Translate('Status updated');   return true;
             case 'loadmap':    return $this->LoadMap();
         }
         return true;
