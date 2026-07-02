@@ -1571,11 +1571,14 @@ HTML;
             if ((int) ($e['reason'] ?? 0) === 101) {
                 $st .= ' (Akku)';
             }
+            $planned  = (int) ($e['planned'] ?? 0);
+            $plCell   = $planned > 0 ? ($planned . ' m²') : '–';
             $rows .= '<tr><td>' . $when . '</td><td>' . $dur . ' min</td><td>' . $area
-                   . ' m²</td><td>' . $pct . '%</td><td>' . htmlspecialchars($st, ENT_QUOTES) . '</td></tr>';
+                   . ' m²</td><td>' . $plCell . '</td><td>' . $pct . '%</td><td>'
+                   . htmlspecialchars($st, ENT_QUOTES) . '</td></tr>';
         }
         if ($rows === '') {
-            $rows = '<tr><td colspan="5" style="text-align:center;color:#8a938e;padding:10px">'
+            $rows = '<tr><td colspan="6" style="text-align:center;color:#8a938e;padding:10px">'
                   . $this->Translate('No entries yet — filled after the next completed mowing session.')
                   . '</td></tr>';
         }
@@ -1586,7 +1589,8 @@ HTML;
               . '.mwl h3{margin:0 0 8px;font-size:16px}</style>'
               . '<div class="mwl"><h3>' . $this->Translate('Work log') . '</h3><table>'
               . '<tr><th>' . $this->Translate('Date') . '</th><th>' . $this->Translate('Duration')
-              . '</th><th>' . $this->Translate('Area') . '</th><th>' . $this->Translate('Progress')
+              . '</th><th>' . $this->Translate('Area') . '</th><th>' . $this->Translate('Planned')
+              . '</th><th>' . $this->Translate('Progress')
               . '</th><th>' . $this->Translate('Status') . '</th></tr>' . $rows . '</table></div>';
         $this->SetValue('WorkLog', $html);
     }
