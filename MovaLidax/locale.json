@@ -33,6 +33,7 @@
             "The mow order is empty.": "Die Mäh-Reihenfolge ist leer.",
             "%s added to mow order": "%s zur Reihenfolge hinzugefügt",
             "Mow order cleared": "Reihenfolge geleert",
+            "Zone status reset.": "Fertig-Markierungen zurückgesetzt.",
             "Status updated": "Status aktualisiert",
             "Map": "Karte",
             "Robot X": "Roboter X",

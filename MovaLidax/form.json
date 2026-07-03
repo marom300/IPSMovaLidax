@@ -59,6 +59,11 @@
             "caption": "Gemähte Spur (orange) in der Karte anzeigen"
         },
         {
+            "type": "CheckBox",
+            "name": "ShowZoneDone",
+            "caption": "Fertig-Häkchen (✓ + Datum/Zeit) pro Zone anzeigen"
+        },
+        {
             "type": "SelectColor",
             "name": "MapBackground",
             "caption": "Hintergrundfarbe (nur falls nicht transparent)"
@@ -272,6 +277,11 @@
             "type": "Button",
             "caption": "Karte / Zonen laden",
             "onClick": "MOVA_LoadMap($id);"
+        },
+        {
+            "type": "Button",
+            "caption": "Fertig-Markierungen (✓) zurücksetzen",
+            "onClick": "MOVA_ClearZoneStatus($id);"
         },
         {
             "type": "Label",

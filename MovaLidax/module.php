@@ -40,6 +40,7 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyBoolean('AllowControl', false);
         $this->RegisterPropertyBoolean('MapTransparent', true);
         $this->RegisterPropertyBoolean('ShowMowPath', true); // gemähte Spur (orange) in der Karte
+        $this->RegisterPropertyBoolean('ShowZoneDone', true); // ✓ + Zeitstempel pro fertiger Zone
         $this->RegisterPropertyInteger('MapBackground', 0xFFFFFF);
         $this->RegisterPropertyInteger('LabelSize', 26);
         $this->RegisterPropertyInteger('LegendSize', 17);
@@ -81,6 +82,8 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeInteger('MapId', 1);
         $this->RegisterAttributeString('MapRaw', '');      // dekodierte Karte (JSON) für Live-Neurender
         $this->RegisterAttributeString('MapPath', '[]');   // gemähte Spur (M_PATH-Segmente)
+        $this->RegisterAttributeString('ZoneStatus', '{}');   // {zoneId: {ts}} — zuletzt fertig gemäht
+        $this->RegisterAttributeString('PendingZones', '{}'); // laufender Auftrag: {zones:[…],started}
         $this->RegisterAttributeString('ZoneQueue', '[]'); // Mäh-Reihenfolge [zoneId,...]
         $this->RegisterAttributeString('ConnHash', '');    // Hash der Verbindungsdaten (Cache-Invalidierung)
         $this->RegisterAttributeString('WorkLogData', '[]'); // Arbeitsprotokoll (Mäh-Sitzungen)
@@ -265,8 +268,12 @@ class MovaLidax extends IPSModule
             return false;
         }
         $mapId = $this->ReadAttributeInteger('MapId');
-        return $this->mowTask('Gesamtes Gebiet',
+        $ok = $this->mowTask('Gesamtes Gebiet',
             ['m' => 'a', 'p' => 0, 'o' => 100, 'd' => ['region_id' => [$mapId], 'area_id' => []]]);
+        if ($ok) {
+            $this->setPendingZones($this->allZoneIds());
+        }
+        return $ok;
     }
 
     /** Begrenzung/Rand mähen (Opcode 101) — braucht geladene Konturen. */
@@ -293,8 +300,12 @@ class MovaLidax extends IPSModule
         if ($ZoneID <= 0) {
             return false;
         }
-        return $this->mowTask('Zone ' . $ZoneID,
+        $ok = $this->mowTask('Zone ' . $ZoneID,
             ['m' => 'a', 'p' => 0, 'o' => 102, 'd' => ['region' => [$ZoneID]]]);
+        if ($ok) {
+            $this->setPendingZones([$ZoneID]);
+        }
+        return $ok;
     }
 
     /** Mäht die aktuell im Dropdown 'Mähzone' gewählte Zone (Start-Button). */
@@ -352,8 +363,12 @@ class MovaLidax extends IPSModule
             echo $this->Translate('The mow order is empty.');
             return false;
         }
-        return $this->mowTask('Zonen ' . implode(',', $ids),
+        $ok = $this->mowTask('Zonen ' . implode(',', $ids),
             ['m' => 'a', 'p' => 0, 'o' => 102, 'd' => ['region' => $ids]]);
+        if ($ok) {
+            $this->setPendingZones($ids);
+        }
+        return $ok;
     }
 
     private function getQueue(): array
@@ -791,7 +806,7 @@ class MovaLidax extends IPSModule
                         $name = 'Zone ' . $id;
                     }
                     $name = $this->displayZoneName($id, $name);
-                    $out[] = ['name' => $name, 'path' => $coords];
+                    $out[] = ['id' => $id, 'name' => $name, 'path' => $coords];
                 }
             }
         }
@@ -850,6 +865,9 @@ class MovaLidax extends IPSModule
             if ($tw > $maxTextW) {
                 $maxTextW = $tw;
             }
+        }
+        if ($this->ReadPropertyBoolean('ShowZoneDone')) {
+            $maxTextW = max($maxTextW, 13 * $charW * 0.6); // Platz fürs "✓ dd.mm. HH:MM"-Badge
         }
         $marginX = (int) round(max($labelSize * 2.2, $maxTextW + $labelSize));
         $marginY = (int) round($labelSize * 2.4);
@@ -940,6 +958,9 @@ class MovaLidax extends IPSModule
         // nach außen ausgelagerten Beschriftung. So bleiben Zonen und Sperrflächen sichtbar.
         $cCenter = $tx([($minx + $maxx) / 2, ($miny + $maxy) / 2]);
         $halo = max(2, (int) round($labelSize * 0.22));
+        $zoneStatus = $this->ReadPropertyBoolean('ShowZoneDone')
+            ? (json_decode($this->ReadAttributeString('ZoneStatus'), true) ?: [])
+            : [];
         foreach ($zones as $z) {
             $cx = 0;
             $cy = 0;
@@ -1002,6 +1023,17 @@ class MovaLidax extends IPSModule
                   . 'font-size="' . $labelSize . '" font-weight="700" fill="#243018" text-anchor="' . $anchor . '" '
                   . 'paint-order="stroke" stroke="#ffffff" stroke-width="' . $halo . '" stroke-opacity="0.85">'
                   . $label . '</text>';
+
+            // ✓ + Zeitstempel, wenn die Zone im letzten Auftrag fertig gemäht wurde
+            $stat = $zoneStatus[(string) (int) ($z['id'] ?? 0)] ?? null;
+            if (is_array($stat) && !empty($stat['ts'])) {
+                $bfs = max(9, (int) round($labelSize * 0.6));
+                $by  = $ly + $labelSize * 0.35 + $bfs * 1.2;
+                $svg .= '<text x="' . round($lx, 1) . '" y="' . round($by, 1) . '" font-size="' . $bfs . '" '
+                      . 'font-weight="600" fill="#2e7d32" text-anchor="' . $anchor . '" paint-order="stroke" '
+                      . 'stroke="#ffffff" stroke-width="' . max(2, (int) round($bfs * 0.28)) . '" stroke-opacity="0.85">'
+                      . '✓ ' . date('d.m. H:i', (int) $stat['ts']) . '</text>';
+            }
         }
 
         // Legende (oben)
@@ -1658,7 +1690,87 @@ HTML;
         }
         $this->WriteAttributeString('WorkLogData', json_encode($log));
         $this->renderWorkLog();
+        $this->stampZonesDone($e);
         $this->LogMessage('Arbeitsprotokoll: Sitzung ergänzt (' . date('d.m.Y H:i', $ts > 0 ? $ts : time()) . ')', KL_NOTIFY);
+    }
+
+    /** IDs aller aktuell bekannten Zonen (aus den geladenen Karten-Metadaten). */
+    private function allZoneIds(): array
+    {
+        $zones = json_decode($this->ReadAttributeString('MapZones'), true);
+        $ids = [];
+        if (is_array($zones)) {
+            foreach ($zones as $z) {
+                $id = (int) ($z['id'] ?? 0);
+                if ($id > 0) {
+                    $ids[] = $id;
+                }
+            }
+        }
+        return $ids;
+    }
+
+    /** Merkt die Zielzonen des gerade gestarteten Auftrags (zum späteren Fertig-Stempeln). */
+    private function setPendingZones(array $ids): void
+    {
+        $this->WriteAttributeString('PendingZones',
+            json_encode(['zones' => array_values(array_map('intval', $ids)), 'started' => time()]));
+    }
+
+    /**
+     * Stempelt bei erfolgreichem Auftragsende die gemerkten Zonen mit dem Fertig-Zeitpunkt.
+     * Greift nur für über dieses Modul gestartete Aufträge (App-Aufträge liefern keine Zonen).
+     */
+    private function stampZonesDone(array $entry): void
+    {
+        $pending = json_decode($this->ReadAttributeString('PendingZones'), true);
+        $this->WriteAttributeString('PendingZones', '{}'); // in jedem Fall verbrauchen
+        if (!is_array($pending) || empty($pending['zones']) || !is_array($pending['zones'])) {
+            return;
+        }
+        if (time() - (int) ($pending['started'] ?? 0) > 86400) {
+            return; // veraltet (kein zugehöriger Auftrag mehr)
+        }
+        if ((int) ($entry['status'] ?? 1) !== 1) {
+            return; // nur normal abgeschlossene Sitzungen zählen als „fertig"
+        }
+        $ts   = (int) ($entry['ts'] ?? 0);
+        $dur  = (int) ($entry['dur'] ?? 0);
+        $done = $ts > 0 ? $ts + $dur * 60 : time();
+
+        $zs = json_decode($this->ReadAttributeString('ZoneStatus'), true);
+        if (!is_array($zs)) {
+            $zs = [];
+        }
+        foreach ($pending['zones'] as $zid) {
+            $zs[(string) (int) $zid] = ['ts' => $done];
+        }
+        $this->WriteAttributeString('ZoneStatus', json_encode($zs));
+        $this->rerenderMap();
+    }
+
+    /** Öffentlich (MOVA_ClearZoneStatus): alle Fertig-Markierungen zurücksetzen. */
+    public function ClearZoneStatus(): void
+    {
+        $this->WriteAttributeString('ZoneStatus', '{}');
+        $this->rerenderMap();
+        echo $this->Translate('Zone status reset.');
+    }
+
+    /** Karte aus dem zwischengespeicherten Karten-JSON neu zeichnen (ohne REST). */
+    private function rerenderMap(): void
+    {
+        $raw = $this->ReadAttributeString('MapRaw');
+        if ($raw === '') {
+            return;
+        }
+        $map = json_decode($raw, true);
+        if (is_array($map)) {
+            $svg = $this->buildMapSvg($map);
+            if ($svg !== '') {
+                $this->SetValue('Map', $svg);
+            }
+        }
     }
 
     /** Rendert das Arbeitsprotokoll als HTML-Tabelle in die WorkLog-Variable. */
