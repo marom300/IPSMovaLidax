@@ -39,6 +39,7 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyInteger('Interval', 60);
         $this->RegisterPropertyBoolean('AllowControl', false);
         $this->RegisterPropertyBoolean('MapTransparent', true);
+        $this->RegisterPropertyBoolean('ShowMowPath', true); // gemähte Spur (orange) in der Karte
         $this->RegisterPropertyInteger('MapBackground', 0xFFFFFF);
         $this->RegisterPropertyInteger('LabelSize', 26);
         $this->RegisterPropertyInteger('LegendSize', 17);
@@ -79,6 +80,7 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeString('MapContours', '[]');  // [[id,sub], ...]
         $this->RegisterAttributeInteger('MapId', 1);
         $this->RegisterAttributeString('MapRaw', '');      // dekodierte Karte (JSON) für Live-Neurender
+        $this->RegisterAttributeString('MapPath', '[]');   // gemähte Spur (M_PATH-Segmente)
         $this->RegisterAttributeString('ZoneQueue', '[]'); // Mäh-Reihenfolge [zoneId,...]
         $this->RegisterAttributeString('ConnHash', '');    // Hash der Verbindungsdaten (Cache-Invalidierung)
         $this->RegisterAttributeString('WorkLogData', '[]'); // Arbeitsprotokoll (Mäh-Sitzungen)
@@ -481,6 +483,8 @@ class MovaLidax extends IPSModule
 
         // Dekodierte Karte für spätere Live-Neurender (roter Punkt) zwischenspeichern
         $this->WriteAttributeString('MapRaw', json_encode($map));
+        // Gemähte Spur (M_PATH) aus denselben Batch-Daten mitnehmen
+        $this->WriteAttributeString('MapPath', json_encode($this->parseMowPath($data)));
 
         // Karte als SVG rendern und in die HTMLBox-Variable schreiben
         $svg = $this->buildMapSvg($map);
@@ -660,6 +664,82 @@ class MovaLidax extends IPSModule
         return is_array($first) ? $first : null;
     }
 
+    /**
+     * M_PATH.* (gemähte Spur) aus Batch-Daten parsen → Segmente [[[x,y],…], …].
+     * Chunks zusammensetzen, [x,y]-Paare extrahieren, Sentinel [32767,-32768] = Segmentbruch,
+     * Koordinaten ×10 (Karten-Einheiten). Bei sehr vielen Punkten wird ausgedünnt.
+     */
+    private function parseMowPath(array $batch): array
+    {
+        $chunks = [];
+        foreach ($batch as $k => $v) {
+            if (preg_match('/^M_PATH\.(\d+)$/', (string) $k, $m)) {
+                $chunks[(int) $m[1]] = (string) $v;
+            }
+        }
+        if (count($chunks) === 0) {
+            return [];
+        }
+        ksort($chunks);
+        $raw  = implode('', $chunks);
+        $info = $batch['M_PATH.info'] ?? '';
+        if (is_string($info) && ctype_digit($info)) {
+            $split = (int) $info;
+            if ($split > 0 && $split < strlen($raw)) {
+                $raw = substr($raw, $split);
+            }
+        }
+        if (!preg_match_all('/\[(-?\d+),(-?\d+)\]/', $raw, $mm, PREG_SET_ORDER)) {
+            return [];
+        }
+        $segments = [];
+        $cur = [];
+        foreach ($mm as $p) {
+            $x = (int) $p[1];
+            $y = (int) $p[2];
+            if ($x === 32767 && $y === -32768) { // Segmentbruch
+                if (count($cur) >= 2) {
+                    $segments[] = $cur;
+                }
+                $cur = [];
+            } else {
+                $cur[] = [$x * 10, $y * 10];
+            }
+        }
+        if (count($cur) >= 2) {
+            $segments[] = $cur;
+        }
+        return $this->downsamplePath($segments, 4000);
+    }
+
+    /** Dünnt die Spur aus, falls sie mehr als $maxPts Punkte hat (Segment-Enden bleiben). */
+    private function downsamplePath(array $segments, int $maxPts): array
+    {
+        $total = 0;
+        foreach ($segments as $s) {
+            $total += count($s);
+        }
+        if ($total <= $maxPts || $total === 0) {
+            return $segments;
+        }
+        $step = (int) ceil($total / $maxPts);
+        $out  = [];
+        foreach ($segments as $s) {
+            $n  = count($s);
+            $ds = [];
+            for ($i = 0; $i < $n; $i += $step) {
+                $ds[] = $s[$i];
+            }
+            if (($n - 1) % $step !== 0) {
+                $ds[] = $s[$n - 1];
+            }
+            if (count($ds) >= 2) {
+                $out[] = $ds;
+            }
+        }
+        return $out;
+    }
+
     private function mapList(array $map, string $key): array
     {
         $node = $map[$key] ?? null;
@@ -833,6 +913,29 @@ class MovaLidax extends IPSModule
             $svg .= '<polyline points="' . $points($poly) . '" fill="none" stroke="' . $contourCol . '" '
                   . 'stroke-width="2.5" stroke-linejoin="round"/>';
         }
+        // Gemähte Spur (orange) — über dem Rasen, unter den Beschriftungen
+        if ($this->ReadPropertyBoolean('ShowMowPath')) {
+            $mowPath = json_decode($this->ReadAttributeString('MapPath'), true);
+            if (is_array($mowPath)) {
+                foreach ($mowPath as $seg) {
+                    if (!is_array($seg) || count($seg) < 2) {
+                        continue;
+                    }
+                    $sp = [];
+                    foreach ($seg as $pt) {
+                        if (is_array($pt) && isset($pt[0], $pt[1])) {
+                            $p = $tx([(int) $pt[0], (int) $pt[1]]);
+                            $sp[] = round($p[0], 1) . ',' . round($p[1], 1);
+                        }
+                    }
+                    if (count($sp) >= 2) {
+                        $svg .= '<polyline points="' . implode(' ', $sp) . '" fill="none" '
+                              . 'stroke="#ef8b2c" stroke-width="1.4" stroke-opacity="0.55" '
+                              . 'stroke-linejoin="round" stroke-linecap="round"/>';
+                    }
+                }
+            }
+        }
         // Zonen-Namen als Callouts AUSSERHALB der Zonen: Punkt am Schwerpunkt + Linie zur
         // nach außen ausgelagerten Beschriftung. So bleiben Zonen und Sperrflächen sichtbar.
         $cCenter = $tx([($minx + $maxx) / 2, ($miny + $maxy) / 2]);
@@ -910,8 +1013,14 @@ class MovaLidax extends IPSModule
               . '<rect x="16" y="' . $lyS . '" width="' . $ls . '" height="' . $ls . '" rx="3" fill="#e74c3c" fill-opacity="0.3" stroke="#b53224"/>'
               . '<text x="' . (16 + $ls + 6) . '" y="' . $lyT . '" font-size="' . $ls . '" fill="' . $textCol . '">Sperrzone</text>'
               . '<rect x="' . $gx . '" y="' . ($lyT - (int) round($ls * 0.28)) . '" width="' . (int) round($ls * 1.2) . '" height="' . max(3, (int) round($ls * 0.22)) . '" rx="2" fill="' . $contourCol . '"/>'
-              . '<text x="' . ($gx + (int) round($ls * 1.2) + 8) . '" y="' . $lyT . '" font-size="' . $ls . '" fill="' . $textCol . '">Grenze</text>'
-              . '</g>';
+              . '<text x="' . ($gx + (int) round($ls * 1.2) + 8) . '" y="' . $lyT . '" font-size="' . $ls . '" fill="' . $textCol . '">Grenze</text>';
+        if ($this->ReadPropertyBoolean('ShowMowPath')) {
+            $gx2 = $gx + (int) round($ls * 1.2) + 8 + (int) round(strlen('Grenze') * $ls * 0.6) + 26;
+            $svg .= '<line x1="' . $gx2 . '" y1="' . ($lyT - (int) round($ls * 0.28)) . '" x2="' . ($gx2 + (int) round($ls * 1.4))
+                  . '" y2="' . ($lyT - (int) round($ls * 0.28)) . '" stroke="#ef8b2c" stroke-width="3" stroke-opacity="0.85"/>'
+                  . '<text x="' . ($gx2 + (int) round($ls * 1.4) + 8) . '" y="' . $lyT . '" font-size="' . $ls . '" fill="' . $textCol . '">Gemäht</text>';
+        }
+        $svg .= '</g>';
 
         // Live-Position (roter Punkt + Richtungsstrich)
         if ($robot !== null && isset($robot['x'], $robot['y'])

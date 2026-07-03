@@ -54,6 +54,11 @@
             "caption": "Kartenhintergrund transparent (passt sich der View an)"
         },
         {
+            "type": "CheckBox",
+            "name": "ShowMowPath",
+            "caption": "Gemähte Spur (orange) in der Karte anzeigen"
+        },
+        {
             "type": "SelectColor",
             "name": "MapBackground",
             "caption": "Hintergrundfarbe (nur falls nicht transparent)"
