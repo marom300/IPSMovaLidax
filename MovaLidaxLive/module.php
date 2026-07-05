@@ -170,6 +170,9 @@ class MovaLidaxLive extends IPSModule
                     if ($dec['task'] !== null) {
                         @MOVA_UpdateProgress($mainID, $dec['task']['percent'], $dec['task']['current'], $dec['task']['total']);
                     }
+                    if (!empty($dec['track']) && is_array($dec['track'])) {
+                        @MOVA_AddTrack($mainID, json_encode($dec['track']));
+                    }
                 }
             } elseif ($siid === 2 && $piid === 1 && is_numeric($val)) { // Status
                 $st = (int) $val;
@@ -221,7 +224,7 @@ class MovaLidaxLive extends IPSModule
     // ------------------------------------------------------------------ //
     private function decodePose1_4($value): array
     {
-        $out = ['pose' => null, 'task' => null];
+        $out = ['pose' => null, 'task' => null, 'track' => null];
         $d = $this->toByteList($value);
         if ($d === null) {
             return $out;
@@ -241,10 +244,49 @@ class MovaLidaxLive extends IPSModule
             return $out;
         }
         $out['pose'] = $this->parsePose($d, 1);
+        $bx = $out['pose']['x'];
+        $by = $out['pose']['y'];
         if ($n === 33 || $n === 44) {
             $out['task'] = $this->parseTask($d, 22);
         }
+        // Trace (gemähte Bahn): 33/44/22 haben ab Offset 7 einen 15-Byte-Trace; 44 zusätzlich @32/11
+        if ($n === 33 || $n === 44 || $n === 22) {
+            $tr = $this->parseTrace($d, 7, 15, $bx, $by);
+            if ($n === 44) {
+                $tr[] = null;
+                foreach ($this->parseTrace($d, 32, 11, $bx, $by) as $p) {
+                    $tr[] = $p;
+                }
+            }
+            $out['track'] = $tr;
+        }
         return $out;
+    }
+
+    /** Trace-Segment: 24-Bit-Startindex + int16-LE (dx,dy)-Deltas relativ zur Pose (×10). */
+    private function parseTrace(array $d, int $o, int $len, int $bx, int $by): array
+    {
+        if ($len < 7 || $o + $len > count($d)) {
+            return [];
+        }
+        $pairs = intdiv($len - 3, 4);
+        $out = [];
+        for ($i = 0; $i < $pairs; $i++) {
+            $po = $o + 3 + $i * 4;
+            $dx = $this->s16($d[$po] | ($d[$po + 1] << 8));
+            $dy = $this->s16($d[$po + 2] | ($d[$po + 3] << 8));
+            if (abs($dx) > 32766 && abs($dy) > 32766) {
+                $out[] = null; // Segmentbruch
+            } else {
+                $out[] = [$bx + $dx * 10, $by + $dy * 10];
+            }
+        }
+        return $out;
+    }
+
+    private function s16(int $v): int
+    {
+        return $v >= 32768 ? $v - 65536 : $v;
     }
 
     /** Pose (6 Bytes ab Offset): 20-Bit-überlappend signed x/y, Heading. ×10 = Karten-Einheiten. */

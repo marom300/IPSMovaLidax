@@ -41,6 +41,7 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyBoolean('MapTransparent', true);
         $this->RegisterPropertyBoolean('ShowMowPath', true); // gemähte Spur (orange) in der Karte
         $this->RegisterPropertyBoolean('ShowZoneDone', true); // ✓ + Zeitstempel pro fertiger Zone
+        $this->RegisterPropertyInteger('PathRefreshMin', 0);  // REST-Snapshot alle N min nachladen (0=aus; Live macht MQTT)
         $this->RegisterPropertyInteger('MapBackground', 0xFFFFFF);
         $this->RegisterPropertyInteger('LabelSize', 26);
         $this->RegisterPropertyInteger('LegendSize', 17);
@@ -81,7 +82,8 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeString('MapContours', '[]');  // [[id,sub], ...]
         $this->RegisterAttributeInteger('MapId', 1);
         $this->RegisterAttributeString('MapRaw', '');      // dekodierte Karte (JSON) für Live-Neurender
-        $this->RegisterAttributeString('MapPath', '[]');   // gemähte Spur (M_PATH-Segmente)
+        $this->RegisterAttributeString('MapPath', '[]');   // gemähte Spur (M_PATH-Snapshot, REST)
+        // Live-Spur (MQTT-Trace) läuft über einen Buffer (In-Memory), da hochfrequent
         $this->RegisterAttributeString('ZoneStatus', '{}');   // {zoneId: {ts}} — zuletzt fertig gemäht
         $this->RegisterAttributeString('PendingZones', '{}'); // laufender Auftrag: {zones:[…],started}
         $this->RegisterAttributeString('ZoneQueue', '[]'); // Mäh-Reihenfolge [zoneId,...]
@@ -203,6 +205,14 @@ class MovaLidax extends IPSModule
                 $this->SetValue('Firmware', (string) $status['firmware']);
             }
             $this->SetValue('LastUpdate', time());
+
+            // Während des Mähens (Status 1) die gemähte Spur automatisch nachladen
+            if ((int) ($status['state'] ?? -1) === 1) {
+                $iv = $this->ReadPropertyInteger('PathRefreshMin');
+                if ($iv > 0 && (time() - (int) $this->GetBuffer('LastPathRefresh')) >= $iv * 60) {
+                    $this->refreshMowPath();
+                }
+            }
             $this->SetStatus(102);
         } catch (Exception $e) {
             $this->LogMessage('Poll-Fehler: ' . $e->getMessage(), KL_ERROR);
@@ -867,7 +877,7 @@ class MovaLidax extends IPSModule
             }
         }
         if ($this->ReadPropertyBoolean('ShowZoneDone')) {
-            $maxTextW = max($maxTextW, 13 * $charW * 0.6); // Platz fürs "✓ dd.mm. HH:MM"-Badge
+            $maxTextW = max($maxTextW, 10.5 * $charW); // Platz fürs "✓ dd.mm. HH:MM"-Badge
         }
         $marginX = (int) round(max($labelSize * 2.2, $maxTextW + $labelSize));
         $marginY = (int) round($labelSize * 2.4);
@@ -953,6 +963,35 @@ class MovaLidax extends IPSModule
                     }
                 }
             }
+            // Live wachsende Spur (MQTT-Trace, Buffer), gleiche Farbe
+            $live = json_decode((string) $this->GetBuffer('LiveTrack'), true);
+            if (is_array($live) && count($live) > 0) {
+                $segs = [];
+                $seg  = [];
+                foreach ($live as $pt) {
+                    if (is_array($pt) && isset($pt[0], $pt[1])) {
+                        $seg[] = [(int) $pt[0], (int) $pt[1]];
+                    } else {
+                        if (count($seg) >= 2) {
+                            $segs[] = $seg;
+                        }
+                        $seg = [];
+                    }
+                }
+                if (count($seg) >= 2) {
+                    $segs[] = $seg;
+                }
+                foreach ($segs as $s2) {
+                    $pp = [];
+                    foreach ($s2 as $pt) {
+                        $p = $tx($pt);
+                        $pp[] = round($p[0], 1) . ',' . round($p[1], 1);
+                    }
+                    $svg .= '<polyline points="' . implode(' ', $pp) . '" fill="none" '
+                          . 'stroke="#ef8b2c" stroke-width="1.6" stroke-opacity="0.6" '
+                          . 'stroke-linejoin="round" stroke-linecap="round"/>';
+                }
+            }
         }
         // Zonen-Namen als Callouts AUSSERHALB der Zonen: Punkt am Schwerpunkt + Linie zur
         // nach außen ausgelagerten Beschriftung. So bleiben Zonen und Sperrflächen sichtbar.
@@ -1027,8 +1066,8 @@ class MovaLidax extends IPSModule
             // ✓ + Zeitstempel, wenn die Zone im letzten Auftrag fertig gemäht wurde
             $stat = $zoneStatus[(string) (int) ($z['id'] ?? 0)] ?? null;
             if (is_array($stat) && !empty($stat['ts'])) {
-                $bfs = max(9, (int) round($labelSize * 0.6));
-                $by  = $ly + $labelSize * 0.35 + $bfs * 1.2;
+                $bfs = max(13, (int) round($labelSize * 0.82));
+                $by  = $ly + $labelSize * 0.35 + $bfs * 1.25;
                 $svg .= '<text x="' . round($lx, 1) . '" y="' . round($by, 1) . '" font-size="' . $bfs . '" '
                       . 'font-weight="600" fill="#2e7d32" text-anchor="' . $anchor . '" paint-order="stroke" '
                       . 'stroke="#ffffff" stroke-width="' . max(2, (int) round($bfs * 0.28)) . '" stroke-opacity="0.85">'
@@ -1588,6 +1627,7 @@ HTML;
         $this->SetValue('RobotY', $Y);
         $this->SetValue('RobotHeading', (int) round($Heading));
         $this->SetValue('PositionUpdate', time());
+        $this->SetBuffer('LastRobot', json_encode(['x' => $X, 'y' => $Y, 'h' => $Heading, 't' => time()]));
 
         $now  = time();
         $last = (int) $this->GetBuffer('LastMapRender');
@@ -1665,6 +1705,30 @@ HTML;
     }
 
     /**
+     * Öffentlich (MOVA_AddTrack): Trace-Punkte aus dem MQTT-1:4-Frame an die live wachsende
+     * Spur anhängen. $Json = Liste von [x,y] (null = Segmentbruch), in Karten-Einheiten.
+     */
+    public function AddTrack(string $Json): void
+    {
+        $pts = json_decode($Json, true);
+        if (!is_array($pts) || count($pts) === 0) {
+            return;
+        }
+        $track = json_decode((string) $this->GetBuffer('LiveTrack'), true);
+        if (!is_array($track)) {
+            $track = [];
+        }
+        $track[] = null; // Trenner zum vorigen Frame
+        foreach ($pts as $p) {
+            $track[] = (is_array($p) && isset($p[0], $p[1])) ? [(int) $p[0], (int) $p[1]] : null;
+        }
+        if (count($track) > 8000) {
+            $track = array_slice($track, -8000);
+        }
+        $this->SetBuffer('LiveTrack', json_encode($track));
+    }
+
+    /**
      * Öffentlich (MOVA_LogMission): abgeschlossene Mäh-Sitzung ins Arbeitsprotokoll
      * aufnehmen (Live-Kind bei Event 4:1). Doppelte (gleiche Startzeit) werden übersprungen.
      */
@@ -1715,6 +1779,7 @@ HTML;
     {
         $this->WriteAttributeString('PendingZones',
             json_encode(['zones' => array_values(array_map('intval', $ids)), 'started' => time()]));
+        $this->SetBuffer('LiveTrack', '[]'); // Live-Spur für den neuen Auftrag zurücksetzen
     }
 
     /**
@@ -1765,12 +1830,36 @@ HTML;
             return;
         }
         $map = json_decode($raw, true);
-        if (is_array($map)) {
-            $svg = $this->buildMapSvg($map);
-            if ($svg !== '') {
-                $this->SetValue('Map', $svg);
-            }
+        if (!is_array($map)) {
+            return;
         }
+        // Aktuelle Roboter-Position (falls frisch) beibehalten, damit der Punkt nicht kurz verschwindet
+        $robot = null;
+        $lr = json_decode((string) $this->GetBuffer('LastRobot'), true);
+        if (is_array($lr) && isset($lr['x'], $lr['y'], $lr['t']) && (time() - (int) $lr['t']) < 20) {
+            $robot = ['x' => (int) $lr['x'], 'y' => (int) $lr['y'], 'h' => (float) ($lr['h'] ?? 0)];
+        }
+        $svg = $this->buildMapSvg($map, $robot);
+        if ($svg !== '') {
+            $this->SetValue('Map', $svg);
+        }
+    }
+
+    /** Nur die gemähte Spur (M_PATH) neu vom Server holen — z. B. während des Mähens. */
+    private function refreshMowPath(): void
+    {
+        $this->SetBuffer('LastPathRefresh', (string) time()); // sofort setzen (kein Doppellauf)
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            return;
+        }
+        $resp = $this->apiRequest('dreame-user-iot/iotuserdata/getDeviceData',
+            ['did' => $this->ReadAttributeString('Did'), 'model' => []]);
+        $data = (is_array($resp) && isset($resp['data']) && is_array($resp['data'])) ? $resp['data'] : null;
+        if ($data === null) {
+            return;
+        }
+        $this->WriteAttributeString('MapPath', json_encode($this->parseMowPath($data)));
+        $this->rerenderMap();
     }
 
     /** Rendert das Arbeitsprotokoll als HTML-Tabelle in die WorkLog-Variable. */

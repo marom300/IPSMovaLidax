@@ -64,6 +64,14 @@
             "caption": "Fertig-Häkchen (✓ + Datum/Zeit) pro Zone anzeigen"
         },
         {
+            "type": "NumberSpinner",
+            "name": "PathRefreshMin",
+            "caption": "REST-Snapshot der Spur nachladen alle (0 = aus; Live-Spur läuft über MQTT)",
+            "suffix": "Minuten",
+            "minimum": 0,
+            "maximum": 30
+        },
+        {
             "type": "SelectColor",
             "name": "MapBackground",
             "caption": "Hintergrundfarbe (nur falls nicht transparent)"
