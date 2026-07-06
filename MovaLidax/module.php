@@ -719,17 +719,30 @@ class MovaLidax extends IPSModule
         }
         $segments = [];
         $cur = [];
+        $maxJump = 4000; // Karten-Einheiten (~3,9 m): größere Sprünge = Transferfahrt → trennen
         foreach ($mm as $p) {
             $x = (int) $p[1];
             $y = (int) $p[2];
-            if ($x === 32767 && $y === -32768) { // Segmentbruch
+            if ($x === 32767 && $y === -32768) { // Segmentbruch (Sentinel)
                 if (count($cur) >= 2) {
                     $segments[] = $cur;
                 }
                 $cur = [];
-            } else {
-                $cur[] = [$x * 10, $y * 10];
+                continue;
             }
+            $pt = [$x * 10, $y * 10];
+            if (!empty($cur)) {
+                $last = $cur[count($cur) - 1];
+                $dx = $pt[0] - $last[0];
+                $dy = $pt[1] - $last[1];
+                if ($dx * $dx + $dy * $dy > $maxJump * $maxJump) { // Transferfahrt überspringen
+                    if (count($cur) >= 2) {
+                        $segments[] = $cur;
+                    }
+                    $cur = [];
+                }
+            }
+            $cur[] = $pt;
         }
         if (count($cur) >= 2) {
             $segments[] = $cur;
@@ -1059,18 +1072,19 @@ class MovaLidax extends IPSModule
             $svg .= '<circle cx="' . round($dot[0], 1) . '" cy="' . round($dot[1], 1) . '" r="3.4" '
                   . 'fill="' . $contourCol . '" stroke="#ffffff" stroke-width="1" stroke-opacity="0.7"/>';
             $svg .= '<text x="' . round($lx, 1) . '" y="' . round($ly + $labelSize * 0.35, 1) . '" '
-                  . 'font-size="' . $labelSize . '" font-weight="700" fill="#243018" text-anchor="' . $anchor . '" '
-                  . 'paint-order="stroke" stroke="#ffffff" stroke-width="' . $halo . '" stroke-opacity="0.85">'
+                  . 'font-size="' . $labelSize . '" font-weight="600" fill="' . $textCol . '" text-anchor="' . $anchor . '">'
                   . $label . '</text>';
 
             // ✓ + Zeitstempel, wenn die Zone im letzten Auftrag fertig gemäht wurde
             $stat = $zoneStatus[(string) (int) ($z['id'] ?? 0)] ?? null;
             if (is_array($stat) && !empty($stat['ts'])) {
-                $bfs = max(13, (int) round($labelSize * 0.82));
-                $by  = $ly + $labelSize * 0.35 + $bfs * 1.25;
+                $bfs = max(12, $legendSize);
+                $by  = $ly + $labelSize * 0.35 + $bfs * 1.3;
+                if ($by > $height - 4) {              // unten kein Platz → über den Namen setzen
+                    $by = $ly - $labelSize * 0.7;
+                }
                 $svg .= '<text x="' . round($lx, 1) . '" y="' . round($by, 1) . '" font-size="' . $bfs . '" '
-                      . 'font-weight="600" fill="#2e7d32" text-anchor="' . $anchor . '" paint-order="stroke" '
-                      . 'stroke="#ffffff" stroke-width="' . max(2, (int) round($bfs * 0.28)) . '" stroke-opacity="0.85">'
+                      . 'font-weight="600" fill="#7ec96a" text-anchor="' . $anchor . '">'
                       . '✓ ' . date('d.m. H:i', (int) $stat['ts']) . '</text>';
             }
         }
