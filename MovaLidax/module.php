@@ -41,6 +41,7 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyBoolean('MapTransparent', true);
         $this->RegisterPropertyBoolean('ShowMowPath', true); // gemähte Spur (orange) in der Karte
         $this->RegisterPropertyBoolean('ShowZoneDone', true); // ✓ + Zeitstempel pro fertiger Zone
+        $this->RegisterPropertyInteger('ZoneDoneSize', 15);   // Schriftgröße der ✓-Badges
         $this->RegisterPropertyInteger('PathRefreshMin', 0);  // REST-Snapshot alle N min nachladen (0=aus; Live macht MQTT)
         $this->RegisterPropertyInteger('MapBackground', 0xFFFFFF);
         $this->RegisterPropertyInteger('LabelSize', 26);
@@ -1075,17 +1076,37 @@ class MovaLidax extends IPSModule
                   . 'font-size="' . $labelSize . '" font-weight="600" fill="' . $textCol . '" text-anchor="' . $anchor . '">'
                   . $label . '</text>';
 
-            // ✓ + Zeitstempel, wenn die Zone im letzten Auftrag fertig gemäht wurde
+            // ✓ + Zeitstempel als lesbarer Chip, wenn die Zone im letzten Auftrag fertig wurde
             $stat = $zoneStatus[(string) (int) ($z['id'] ?? 0)] ?? null;
             if (is_array($stat) && !empty($stat['ts'])) {
-                $bfs = max(12, $legendSize);
-                $by  = $ly + $labelSize * 0.35 + $bfs * 1.3;
-                if ($by > $height - 4) {              // unten kein Platz → über den Namen setzen
-                    $by = $ly - $labelSize * 0.7;
+                $bfs  = min(40, max(8, $this->ReadPropertyInteger('ZoneDoneSize')));
+                $txt  = '✓ ' . date('d.m. H:i', (int) $stat['ts']);
+                $tw   = mb_strlen($txt) * $bfs * 0.56;
+                $padX = $bfs * 0.4;
+
+                // vertikal: unter den Namen; wenn das unten aus dem Bild ragt → über den Namen
+                $gap = $labelSize * 0.2 + $bfs * 0.35;
+                $by  = $ly + $labelSize * 0.35 + $gap + $bfs;
+                if ($by + $bfs * 0.3 > $height - 2) {
+                    $by = $ly - $labelSize * 0.55 - $gap;
                 }
-                $svg .= '<text x="' . round($lx, 1) . '" y="' . round($by, 1) . '" font-size="' . $bfs . '" '
-                      . 'font-weight="600" fill="#7ec96a" text-anchor="' . $anchor . '">'
-                      . '✓ ' . date('d.m. H:i', (int) $stat['ts']) . '</text>';
+
+                // horizontal: kompletten Chip im Bild halten (Anker berücksichtigen)
+                $tl = ($anchor === 'start') ? $lx : (($anchor === 'end') ? $lx - $tw : $lx - $tw / 2);
+                $shift = 0.0;
+                if ($tl + $tw > $width - 4) {
+                    $shift = ($width - 4) - ($tl + $tw);
+                } elseif ($tl < 4) {
+                    $shift = 4 - $tl;
+                }
+                $tx0 = $lx + $shift;
+                $tl += $shift;
+
+                $svg .= '<rect x="' . round($tl - $padX, 1) . '" y="' . round($by - $bfs * 0.92, 1) . '" '
+                      . 'width="' . round($tw + 2 * $padX, 1) . '" height="' . round($bfs * 1.28, 1) . '" '
+                      . 'rx="' . round($bfs * 0.32, 1) . '" fill="#12160e" fill-opacity="0.6"/>'
+                      . '<text x="' . round($tx0, 1) . '" y="' . round($by, 1) . '" font-size="' . $bfs . '" '
+                      . 'font-weight="600" fill="#8fe07a" text-anchor="' . $anchor . '">' . $txt . '</text>';
             }
         }
 

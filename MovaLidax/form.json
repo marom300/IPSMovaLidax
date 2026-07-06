@@ -65,6 +65,13 @@
         },
         {
             "type": "NumberSpinner",
+            "name": "ZoneDoneSize",
+            "caption": "Größe der Fertig-Häkchen (✓)",
+            "minimum": 8,
+            "maximum": 40
+        },
+        {
+            "type": "NumberSpinner",
             "name": "PathRefreshMin",
             "caption": "REST-Snapshot der Spur nachladen alle (0 = aus; Live-Spur läuft über MQTT)",
             "suffix": "Minuten",
