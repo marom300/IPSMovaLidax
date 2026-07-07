@@ -207,6 +207,15 @@ class MovaLidax extends IPSModule
             }
             $this->SetValue('LastUpdate', time());
 
+            // Firmware/Geräte-Infos stündlich auffrischen (Poll holt sonst nur den Status)
+            if ((time() - (int) $this->GetBuffer('LastDeviceInfo')) > 3600) {
+                $this->resolveDeviceInfo();
+                $ver = $this->ReadAttributeString('Ver');
+                if ($ver !== '') {
+                    $this->SetValue('Firmware', $ver);
+                }
+            }
+
             // Während des Mähens (Status 1) die gemähte Spur automatisch nachladen
             if ((int) ($status['state'] ?? -1) === 1) {
                 $iv = $this->ReadPropertyInteger('PathRefreshMin');
@@ -1581,7 +1590,51 @@ HTML;
         $this->WriteAttributeString('Model', (string) ($chosen['model'] ?? ''));
         $this->WriteAttributeString('Uid', (string) ($chosen['masterUid'] ?? ''));
         $this->WriteAttributeString('Ver', (string) ($chosen['ver'] ?? ''));
+        $this->SetBuffer('LastDeviceInfo', (string) time());
         return true;
+    }
+
+    /**
+     * Frischt Geräte-Infos (v. a. Firmware `Ver`) aus der Geräteliste auf, ohne den
+     * Did/Host-Cache zu verwerfen. Firmware ändert sich sonst nie in Symcon.
+     */
+    private function resolveDeviceInfo(): void
+    {
+        $resp = $this->apiRequest('dreame-user-iot/iotuserbind/device/listV2', null);
+        if (!is_array($resp) || !isset($resp['data']['page']['records'])) {
+            return;
+        }
+        $did = $this->ReadAttributeString('Did');
+        foreach ($resp['data']['page']['records'] as $r) {
+            if ((string) ($r['did'] ?? '') === $did) {
+                if (isset($r['ver'])) {
+                    $this->WriteAttributeString('Ver', (string) $r['ver']);
+                }
+                if (!empty($r['bindDomain'])) {
+                    $this->WriteAttributeString('Host', (string) $r['bindDomain']);
+                }
+                if (!empty($r['model'])) {
+                    $this->WriteAttributeString('Model', (string) $r['model']);
+                }
+                break;
+            }
+        }
+        $this->SetBuffer('LastDeviceInfo', (string) time());
+    }
+
+    /** Öffentlich (MOVA_RefreshDevice): Geräte-Infos/Firmware sofort neu einlesen. */
+    public function RefreshDevice(): void
+    {
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            echo $this->Translate('Not connected.');
+            return;
+        }
+        $this->resolveDeviceInfo();
+        $ver = $this->ReadAttributeString('Ver');
+        if ($ver !== '') {
+            $this->SetValue('Firmware', $ver);
+        }
+        echo sprintf($this->Translate('Firmware: %s'), $ver !== '' ? $ver : '?');
     }
 
     private function sendCommandPath(): string

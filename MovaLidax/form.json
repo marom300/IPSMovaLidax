@@ -261,6 +261,11 @@
             "onClick": "MOVA_Poll($id);"
         },
         {
+            "type": "Button",
+            "caption": "Gerät / Firmware neu einlesen",
+            "onClick": "MOVA_RefreshDevice($id);"
+        },
+        {
             "type": "Label",
             "caption": "— Steuerung —"
         },
