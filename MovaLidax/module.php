@@ -52,12 +52,13 @@ class MovaLidax extends IPSModule
         $this->RegisterPropertyString('ZoneNames', '[]');
         // Anordnung/Sichtbarkeit der Steuer-Buttons im Dashboard (Reihenfolge = Listenreihenfolge)
         $this->RegisterPropertyString('ControlButtons', json_encode([
-            ['Key' => 'all',   'Label' => '', 'Show' => true],
-            ['Key' => 'edge',  'Label' => '', 'Show' => true],
-            ['Key' => 'pause', 'Label' => '', 'Show' => true],
-            ['Key' => 'stop',  'Label' => '', 'Show' => true],
-            ['Key' => 'dock',  'Label' => '', 'Show' => true],
-            ['Key' => 'home',  'Label' => '', 'Show' => true],
+            ['Key' => 'all',    'Label' => '', 'Show' => true],
+            ['Key' => 'edge',   'Label' => '', 'Show' => true],
+            ['Key' => 'pause',  'Label' => '', 'Show' => true],
+            ['Key' => 'resume', 'Label' => '', 'Show' => true],
+            ['Key' => 'stop',   'Label' => '', 'Show' => true],
+            ['Key' => 'dock',   'Label' => '', 'Show' => true],
+            ['Key' => 'home',   'Label' => '', 'Show' => true],
         ]));
         // Anordnung/Sichtbarkeit der Zonen-Buttons im Dashboard
         $this->RegisterPropertyString('ZoneButtons', json_encode([
@@ -272,8 +273,9 @@ class MovaLidax extends IPSModule
     private function dispatchAction(int $value): void
     {
         switch ($value) {
-            case 1:  $this->StartAll();   break;
-            case 2:  $this->StartEdge();  break;
+            case 1:  $this->StartAll();     break;
+            case 2:  $this->StartEdge();    break;
+            case 3:  $this->MowerResume();  break;
             case 10: $this->MowerStop();  break;
             case 11: $this->MowerDock();  break;
             case 12: $this->MowerPause(); break;
@@ -446,6 +448,12 @@ class MovaLidax extends IPSModule
     public function MowerPause(): bool
     {
         return $this->simpleAction(5, 4, 'Pause');
+    }
+
+    /** Pausierten Mähvorgang fortsetzen (App-Mähmodus, Opcode 5 = Resume). */
+    public function MowerResume(): bool
+    {
+        return $this->mowTask('Fortsetzen', ['m' => 'a', 'p' => 0, 'o' => 5]);
     }
 
     /**
@@ -1229,6 +1237,7 @@ class MovaLidax extends IPSModule
             case 'all':    return $this->StartAll();
             case 'edge':   return $this->StartEdge();
             case 'pause':  return $this->MowerPause();
+            case 'resume': return $this->MowerResume();
             case 'stop':   return $this->MowerStop();
             case 'dock':   return $this->MowerDock();
             case 'home':   return $this->ReturnHome();
@@ -1405,7 +1414,7 @@ select{background:#2f343a;color:#e7ebe6}
 <script>
 var selZone=0,zlist=[];
 function toast(msg,ok){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(ok?'ok':'err');clearTimeout(window._tt);window._tt=setTimeout(function(){t.className='toast'},3500);}
-var CTRL={all:{t:'Gesamtes Gebiet',c:'go'},edge:{t:'Begrenzung',c:'go'},pause:{t:'Pause',c:''},stop:{t:'Stop',c:'stop'},dock:{t:'Andocken',c:''},home:{t:'Stopp & Heim',c:'stop'}};
+var CTRL={all:{t:'Gesamtes Gebiet',c:'go'},edge:{t:'Begrenzung',c:'go'},pause:{t:'Pause',c:''},resume:{t:'Fortsetzen',c:'go'},stop:{t:'Stop',c:'stop'},dock:{t:'Andocken',c:''},home:{t:'Stopp & Heim',c:'stop'}};
 var ctrlKey='';
 function renderControls(list){var el=document.getElementById('ctrlBtns');if(!el)return;el.innerHTML='';(list||[]).forEach(function(b){var m=CTRL[b.key];if(!m)return;var btn=document.createElement('button');btn.className=m.c;btn.textContent=b.label||m.t;btn.onclick=function(){cmd(b.key)};el.appendChild(btn);});}
 var ZBTN={zonestart:{t:'Diese Zone mähen',c:'go',f:function(){cmd('zone&id='+zv())}},queueadd:{t:'+ zur Reihenfolge',c:'',f:function(){addSel()}},queuerun:{t:'Reihenfolge mähen',c:'go',f:function(){cmd('queuerun')}},queueclear:{t:'Leeren',c:'',f:function(){clearSel()}}};
@@ -2093,6 +2102,7 @@ HTML;
                 0  => '–',
                 1  => $this->Translate('Mow whole area'),
                 2  => $this->Translate('Mow edge'),
+                3  => $this->Translate('Resume mowing'),
                 10 => $this->Translate('Stop'),
                 11 => $this->Translate('Dock (keep task)'),
                 12 => $this->Translate('Pause'),

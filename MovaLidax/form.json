@@ -148,6 +148,7 @@
                                     { "caption": "Gesamtes Gebiet", "value": "all" },
                                     { "caption": "Begrenzung", "value": "edge" },
                                     { "caption": "Pause", "value": "pause" },
+                                    { "caption": "Fortsetzen", "value": "resume" },
                                     { "caption": "Stop", "value": "stop" },
                                     { "caption": "Andocken", "value": "dock" },
                                     { "caption": "Stopp & Heim", "value": "home" }
@@ -275,6 +276,7 @@
                 { "type": "Button", "caption": "Gesamtes Gebiet", "onClick": "MOVA_StartAll($id);" },
                 { "type": "Button", "caption": "Begrenzung", "onClick": "MOVA_StartEdge($id);" },
                 { "type": "Button", "caption": "Pause", "onClick": "MOVA_MowerPause($id);" },
+                { "type": "Button", "caption": "Fortsetzen", "onClick": "MOVA_MowerResume($id);" },
                 { "type": "Button", "caption": "Stop", "onClick": "MOVA_MowerStop($id);" },
                 { "type": "Button", "caption": "Andocken", "onClick": "MOVA_MowerDock($id);" },
                 { "type": "Button", "caption": "Stopp & Heim", "onClick": "MOVA_ReturnHome($id);" }
