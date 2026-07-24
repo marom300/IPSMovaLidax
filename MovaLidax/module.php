@@ -27,6 +27,85 @@ class MovaLidax extends IPSModule
         3 => 'Geladen', 5 => 'Rückkehr zum Laden', 16 => 'Pausiert (Temperatur)'
     ];
 
+    // Geräte-Meldecodes (device_code 2:2) → [Text, Typ] mit 0=Info, 1=Warnung, 2=Fehler.
+    // Basis-Tabelle + MOVA-Abweichungen (Referenz: antondaubert/dreame-mower, MOVA-Registry).
+    private const EVENT_CODES = [
+        0  => ['Roboter angehoben', 2],
+        1  => ['Roboter gekippt', 2],
+        2  => ['Roboter steckt fest', 2],
+        3  => ['Durchgang zur Station zu schmal', 2],
+        4  => ['Fehler linkes Antriebsrad', 2],
+        5  => ['Fehler rechtes Antriebsrad', 2],
+        6  => ['Fehler Hubmotor', 2],
+        7  => ['Mähteller blockiert', 2],
+        8  => ['Fehler Seitenmotor', 2],
+        9  => ['Fehler Stoßfänger', 2],
+        10 => ['Ladefehler', 2],
+        11 => ['Akku-Temperatur zu hoch', 2],
+        12 => ['LiDAR blockiert', 2],
+        13 => ['LiDAR überhitzt (ohne Karte)', 2],
+        14 => ['LiDAR überhitzt (mit Karte)', 2],
+        15 => ['LiDAR überhitzt', 2],
+        16 => ['LiDAR verschmutzt', 2],
+        17 => ['LiDAR-Sensor fehlerhaft', 2],
+        18 => ['Roboter außerhalb der Kartengrenzen', 2],
+        19 => ['Roboter hat Position verloren', 2],
+        20 => ['Sensorfehler', 2],
+        21 => ['Roboter steckt in Sperrzone fest', 2],
+        22 => ['Roboter außerhalb der Karte', 2],
+        23 => ['Not-Aus gedrückt', 2],
+        24 => ['Akku leer – schaltet ab', 2],
+        25 => ['Kartendatei beschädigt', 2],
+        26 => ['Roboter zu weit von der Karte entfernt', 2],
+        27 => ['Positionierung fehlgeschlagen', 2],
+        28 => ['Messer verloren oder verschlissen', 2],
+        29 => ['Signal der Ladestation verloren', 2],
+        30 => ['Wartung fällig', 1],
+        31 => ['Rückkehr zum Laden fehlgeschlagen', 1],
+        32 => ['Andocken fehlgeschlagen', 1],
+        33 => ['Positionierung fehlgeschlagen (mit Karte)', 1],
+        34 => ['Positionierung fehlgeschlagen (ohne Karte)', 1],
+        35 => ['Positionierung ungenau', 1],
+        36 => ['Aufgabe konnte nicht starten', 1],
+        37 => ['Weg blockiert – nicht passierbar', 2],
+        38 => ['LiDAR verschmutzt', 1],
+        39 => ['Kamera verschmutzt', 1],
+        40 => ['Kamera fehlerhaft', 1],
+        41 => ['Kamera verdeckt', 1],
+        42 => ['Akku-Temperatur hoch', 1],
+        43 => ['Laden pausiert: Akku zu kalt', 1],
+        44 => ['Automatische Begrenzung braucht Aufmerksamkeit', 1],
+        45 => ['Automatischer Randlauf braucht Aufmerksamkeit', 1],
+        46 => ['Begrenzung fertiggestellt', 0],
+        47 => ['Roboter beschäftigt – Zeitplan übersprungen', 0],
+        48 => ['Mähaufgabe erfolgreich abgeschlossen', 0],
+        49 => ['Mähaufgabe gestartet', 0],
+        50 => ['Mähvorgang gestartet', 0],
+        51 => ['Patrouille gestartet', 0],
+        52 => ['Punkt-Fahrt gestartet', 0],
+        53 => ['Geplante Aufgabe gestartet', 0],
+        54 => ['Akku schwach – Rückkehr zur Station', 0],
+        55 => ['Start nicht möglich: Akku zu schwach', 2],
+        56 => ['Pause wegen schlechten Wetters', 0],
+        57 => ['Zeitplan durch Regen unterbrochen', 0],
+        58 => ['Zeitplan wegen Regen ausgesetzt', 0],
+        59 => ['Rückkehr wegen Frost', 0],
+        60 => ['Zeitplan wegen Frost ausgesetzt', 0],
+        61 => ['Nicht-stören-Zeitraum begonnen', 0],
+        62 => ['Zeitplan wegen Nicht-stören ausgesetzt', 0],
+        63 => ['Zeitplan ausgesetzt – Roboter arbeitet bereits', 0],
+        64 => ['Zeitplan ausgesetzt – Fernsteuerung aktiv', 0],
+        65 => ['Zeitplan ausgesetzt – Not-Aus ausgelöst', 0],
+        66 => ['Zeitplan ausgesetzt – Deckel offen', 0],
+        67 => ['Zeitplan ausgesetzt – Fehlermodus', 0],
+        68 => ['Geplante Aufgabe abgelaufen', 0],
+        69 => ['Station nicht mit Mähbereich verbunden', 0],
+        70 => ['Setzt unterbrochene Aufgabe fort', 0],
+        71 => ['Rückkehr nach Leerlauf-Timeout', 0],
+        72 => ['Rückkehr nach Pausen-Timeout', 0],
+        73 => ['Deckel offen', 2],
+    ];
+
     public function Create()
     {
         parent::Create();
@@ -91,6 +170,7 @@ class MovaLidax extends IPSModule
         $this->RegisterAttributeString('ZoneQueue', '[]'); // Mäh-Reihenfolge [zoneId,...]
         $this->RegisterAttributeString('ConnHash', '');    // Hash der Verbindungsdaten (Cache-Invalidierung)
         $this->RegisterAttributeString('WorkLogData', '[]'); // Arbeitsprotokoll (Mäh-Sitzungen)
+        $this->RegisterAttributeString('EventLogData', '[]'); // Ereignisprotokoll (Geräte-Meldungen)
 
         $this->RegisterTimer('Poll', 0, 'MOVA_Poll($_IPS[\'TARGET\']);');
     }
@@ -138,6 +218,9 @@ class MovaLidax extends IPSModule
         // Arbeitsprotokoll (frei platzierbare HTML-Box, z. B. in IPSView)
         $this->RegisterVariableString('WorkLog', $this->Translate('Work log'), '~HTMLBox', 110);
         $this->renderWorkLog();
+        // Ereignisprotokoll (Geräte-Meldungen wie in der Handy-App)
+        $this->RegisterVariableString('EventLog', $this->Translate('Event log'), '~HTMLBox', 111);
+        $this->renderEventLog();
         $this->updateOrderDisplay();
 
         // WebHook für das HTML-Dashboard (in IPSView per URL aufrufbar)
@@ -1853,6 +1936,81 @@ HTML;
         $this->renderWorkLog();
         $this->stampZonesDone($e);
         $this->LogMessage('Arbeitsprotokoll: Sitzung ergänzt (' . date('d.m.Y H:i', $ts > 0 ? $ts : time()) . ')', KL_NOTIFY);
+    }
+
+    /**
+     * Öffentlich (MOVA_LogEvent): Geräte-Meldung (device_code 2:2) ins Ereignisprotokoll.
+     * Das sind dieselben Meldungen, die die Handy-App als Push anzeigt.
+     */
+    public function LogEvent(int $Code): void
+    {
+        $def  = self::EVENT_CODES[$Code] ?? null;
+        $text = $def !== null ? $def[0] : ('Meldung ' . $Code);
+        $type = $def !== null ? (int) $def[1] : 1;
+
+        $log = json_decode($this->ReadAttributeString('EventLogData'), true);
+        if (!is_array($log)) {
+            $log = [];
+        }
+        // Gleiche Meldung innerhalb von 5 min nicht doppelt loggen (Geräte wiederholen Codes)
+        if (isset($log[0]) && (int) ($log[0]['c'] ?? -1) === $Code
+            && (time() - (int) ($log[0]['ts'] ?? 0)) < 300) {
+            return;
+        }
+        array_unshift($log, ['ts' => time(), 'c' => $Code, 't' => $type]);
+        if (count($log) > 100) {
+            $log = array_slice($log, 0, 100);
+        }
+        $this->WriteAttributeString('EventLogData', json_encode($log));
+        $this->renderEventLog();
+        $this->LogMessage('Mäher-Meldung: ' . $text, $type === 2 ? KL_ERROR : ($type === 1 ? KL_WARNING : KL_NOTIFY));
+    }
+
+    /** Öffentlich (MOVA_ClearEventLog): Ereignisprotokoll leeren. */
+    public function ClearEventLog(): void
+    {
+        $this->WriteAttributeString('EventLogData', '[]');
+        $this->renderEventLog();
+        echo $this->Translate('Event log cleared.');
+    }
+
+    /** Rendert das Ereignisprotokoll als HTML-Tabelle in die EventLog-Variable. */
+    private function renderEventLog(): void
+    {
+        $log = json_decode($this->ReadAttributeString('EventLogData'), true);
+        if (!is_array($log)) {
+            $log = [];
+        }
+        $typeBadge = [
+            0 => '<span style="color:#7ec96a">&#9679;</span> Info',
+            1 => '<span style="color:#f0b429">&#9679;</span> Warnung',
+            2 => '<span style="color:#e74c3c">&#9679;</span> Fehler',
+        ];
+        $rows = '';
+        foreach ($log as $e) {
+            $ts   = (int) ($e['ts'] ?? 0);
+            $code = (int) ($e['c'] ?? -1);
+            $type = (int) ($e['t'] ?? 1);
+            $def  = self::EVENT_CODES[$code] ?? null;
+            $text = $def !== null ? $def[0] : ('Meldung ' . $code);
+            $rows .= '<tr><td style="white-space:nowrap">' . ($ts > 0 ? date('d.m.Y H:i:s', $ts) : '–')
+                   . '</td><td style="white-space:nowrap">' . ($typeBadge[$type] ?? '–') . '</td><td>'
+                   . htmlspecialchars($text, ENT_QUOTES) . '</td></tr>';
+        }
+        if ($rows === '') {
+            $rows = '<tr><td colspan="3" style="text-align:center;color:#8a938e;padding:10px">'
+                  . $this->Translate('No events yet — device messages will appear here.')
+                  . '</td></tr>';
+        }
+        $html = '<style>.mel{font-family:Segoe UI,Arial,sans-serif;background:#23272b;border-radius:10px;'
+              . 'padding:12px;color:#e7ebe6}.mel table{width:100%;border-collapse:collapse;font-size:14px}'
+              . '.mel th{color:#9aa3a0;text-align:left;font-weight:600;padding:5px 8px;border-bottom:2px solid #333}'
+              . '.mel td{padding:5px 8px;border-bottom:1px solid #2c3338}.mel tr:last-child td{border-bottom:none}'
+              . '.mel h3{margin:0 0 8px;font-size:16px}</style>'
+              . '<div class="mel"><h3>' . $this->Translate('Event log') . '</h3><table>'
+              . '<tr><th>' . $this->Translate('Time') . '</th><th>' . $this->Translate('Type')
+              . '</th><th>' . $this->Translate('Message') . '</th></tr>' . $rows . '</table></div>';
+        $this->SetValue('EventLog', $html);
     }
 
     /** IDs aller aktuell bekannten Zonen (aus den geladenen Karten-Metadaten). */

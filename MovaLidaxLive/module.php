@@ -176,6 +176,10 @@ class MovaLidaxLive extends IPSModule
                 }
             } elseif ($siid === 2 && $piid === 1 && is_numeric($val)) { // Status
                 $st = (int) $val;
+            } elseif ($siid === 2 && $piid === 2 && is_numeric($val)) { // Geräte-Meldung (device_code)
+                if ($haveMain) {
+                    @MOVA_LogEvent($mainID, (int) $val);
+                }
             } elseif ($siid === 3 && $piid === 1 && is_numeric($val)) { // Akku
                 $bat = (int) $val;
             } elseif ($siid === 3 && $piid === 2 && is_numeric($val)) { // Ladezustand

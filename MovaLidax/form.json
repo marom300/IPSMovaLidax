@@ -306,6 +306,11 @@
             "onClick": "MOVA_ClearZoneStatus($id);"
         },
         {
+            "type": "Button",
+            "caption": "Ereignisprotokoll leeren",
+            "onClick": "MOVA_ClearEventLog($id);"
+        },
+        {
             "type": "Label",
             "caption": "Zonen-Mähen: nach 'Karte / Zonen laden' die Variable 'Mähzone' im Objektbaum/WebFront auf die gewünschte Zone setzen. 'Gesamtes Gebiet' und 'Begrenzung' brauchen die Freischaltung oben."
         }
