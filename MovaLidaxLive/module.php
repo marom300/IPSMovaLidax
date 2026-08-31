@@ -180,6 +180,9 @@ class MovaLidaxLive extends IPSModule
                 if ($haveMain) {
                     @MOVA_LogEvent($mainID, (int) $val);
                 }
+            } elseif ($siid === 2 && $piid === 50) { // Task-Deskriptor (zeigt Opcode/Daten der laufenden Aufgabe)
+                $this->SendDebug('TaskDescriptor', json_encode($val, JSON_UNESCAPED_SLASHES), 0);
+                $this->LogMessage('MOVA Task-Deskriptor (2:50): ' . json_encode($val, JSON_UNESCAPED_SLASHES), KL_NOTIFY);
             } elseif ($siid === 3 && $piid === 1 && is_numeric($val)) { // Akku
                 $bat = (int) $val;
             } elseif ($siid === 3 && $piid === 2 && is_numeric($val)) { // Ladezustand
