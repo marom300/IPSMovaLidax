@@ -717,8 +717,8 @@ class MovaLidax extends IPSModule
         }
         $res = $this->sendAction(2, 50, [$payload]);
         $ok  = $res !== null;
-        $this->LogMessage('Maehbefehl "' . $label . '": ' . ($ok ? 'OK' : 'fehlgeschlagen'),
-            $ok ? KL_NOTIFY : KL_WARNING);
+        $this->LogMessage('Maehbefehl "' . $label . '": ' . ($ok ? 'OK' : 'fehlgeschlagen')
+            . ' — Antwort: ' . json_encode($res, JSON_UNESCAPED_SLASHES), $ok ? KL_NOTIFY : KL_WARNING);
         $this->setLastCommand($label, $ok);
         return $ok;
     }
@@ -732,8 +732,8 @@ class MovaLidax extends IPSModule
         }
         $res = $this->sendAction($siid, $aiid, []);
         $ok  = $res !== null;
-        $this->LogMessage('Befehl "' . $label . '": ' . ($ok ? 'OK' : 'fehlgeschlagen'),
-            $ok ? KL_NOTIFY : KL_WARNING);
+        $this->LogMessage('Befehl "' . $label . '": ' . ($ok ? 'OK' : 'fehlgeschlagen')
+            . ' — Antwort: ' . json_encode($res, JSON_UNESCAPED_SLASHES), $ok ? KL_NOTIFY : KL_WARNING);
         $this->setLastCommand($label, $ok);
         return $ok;
     }
