@@ -560,6 +560,26 @@ class MovaLidax extends IPSModule
         return (string) $out;
     }
 
+    /** Experten/Debug (MOVA_GetProps): Properties lesen (risikofrei). $Json = [[siid,piid],...] */
+    public function GetProps(string $Json): string
+    {
+        $list = json_decode($Json, true);
+        if (!is_array($list)) {
+            return 'Ungueltiges JSON';
+        }
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            return 'Nicht verbunden';
+        }
+        $props = [];
+        foreach ($list as $e) {
+            if (is_array($e) && count($e) >= 2) {
+                $props[] = ['siid' => (int) $e[0], 'piid' => (int) $e[1]];
+            }
+        }
+        $res = $this->sendCommand('get_properties', $props);
+        return (string) json_encode($res, JSON_UNESCAPED_SLASHES);
+    }
+
     /** Experten/Debug (MOVA_SetProp): set_properties auf siid/piid mit JSON-Wert, Antwort zurück. */
     public function SetProp(int $Siid, int $Piid, string $JsonValue): string
     {
