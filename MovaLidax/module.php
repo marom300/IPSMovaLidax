@@ -2013,6 +2013,45 @@ HTML;
         $this->SetValue('EventLog', $html);
     }
 
+    /**
+     * Öffentlich (MOVA_SetPendingFromTask): Zielzonen aus dem Task-Deskriptor (2:50)
+     * übernehmen. So werden auch per App/Zeitplan gestartete Aufträge beim Abschluss
+     * mit ✓ gestempelt — nicht nur Modul-Starts.
+     */
+    public function SetPendingFromTask(string $Json): void
+    {
+        $t = json_decode($Json, true);
+        if (!is_array($t) || ($t['t'] ?? '') !== 'TASK') {
+            return;
+        }
+        $d = $t['d'] ?? null;
+        if (!is_array($d)) {
+            return;
+        }
+        if (!(bool) ($d['exe'] ?? false) && !(bool) ($d['status'] ?? false)) {
+            return; // nur laufende Aufgaben
+        }
+        $o = (int) ($d['o'] ?? -1);
+        if ($o === 102 && !empty($d['region']) && is_array($d['region'])) {
+            $new = array_values(array_map('intval', $d['region']));
+        } elseif ($o === 100) {
+            $new = $this->allZoneIds();
+        } else {
+            return; // Edge/Spot/Resume/… ändern das Pending nicht
+        }
+        // Gleicher laufender Auftrag? Dann nichts tun (sonst würde die Live-Spur ständig geleert)
+        $cur = json_decode($this->ReadAttributeString('PendingZones'), true);
+        $curZones = is_array($cur) ? array_values(array_map('intval', (array) ($cur['zones'] ?? []))) : [];
+        $a = $curZones;
+        $b = $new;
+        sort($a);
+        sort($b);
+        if ($a === $b && (time() - (int) ($cur['started'] ?? 0)) < 86400) {
+            return;
+        }
+        $this->setPendingZones($new);
+    }
+
     /** IDs aller aktuell bekannten Zonen (aus den geladenen Karten-Metadaten). */
     private function allZoneIds(): array
     {
