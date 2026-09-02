@@ -138,6 +138,7 @@ class MovaLidax extends IPSModule
             ['Key' => 'stop',   'Label' => '', 'Show' => true],
             ['Key' => 'dock',   'Label' => '', 'Show' => true],
             ['Key' => 'home',   'Label' => '', 'Show' => true],
+            ['Key' => 'maintenance', 'Label' => '', 'Show' => true],
         ]));
         // Anordnung/Sichtbarkeit der Zonen-Buttons im Dashboard
         $this->RegisterPropertyString('ZoneButtons', json_encode([
@@ -359,6 +360,7 @@ class MovaLidax extends IPSModule
             case 1:  $this->StartAll();     break;
             case 2:  $this->StartEdge();    break;
             case 3:  $this->MowerResume();  break;
+            case 4:  $this->GoToMaintenance(); break;
             case 10: $this->MowerStop();  break;
             case 11: $this->MowerDock();  break;
             case 12: $this->MowerPause(); break;
@@ -537,6 +539,15 @@ class MovaLidax extends IPSModule
     public function MowerResume(): bool
     {
         return $this->mowTask('Fortsetzen', ['m' => 'a', 'p' => 0, 'o' => 5]);
+    }
+
+    /**
+     * Zum Wartungspunkt fahren (Opcode 109, am Gerät ermittelt via Task-Deskriptor 2:50).
+     * Reine Positionierfahrt zum in der App gespeicherten Punkt — wie Dock ohne Freischalt-Pflicht.
+     */
+    public function GoToMaintenance(): bool
+    {
+        return $this->mowTask('Zum Wartungspunkt', ['m' => 'a', 'p' => 0, 'o' => 109]);
     }
 
     /**
@@ -1321,6 +1332,7 @@ class MovaLidax extends IPSModule
             case 'edge':   return $this->StartEdge();
             case 'pause':  return $this->MowerPause();
             case 'resume': return $this->MowerResume();
+            case 'maintenance': return $this->GoToMaintenance();
             case 'stop':   return $this->MowerStop();
             case 'dock':   return $this->MowerDock();
             case 'home':   return $this->ReturnHome();
@@ -1497,7 +1509,7 @@ select{background:#2f343a;color:#e7ebe6}
 <script>
 var selZone=0,zlist=[];
 function toast(msg,ok){var t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(ok?'ok':'err');clearTimeout(window._tt);window._tt=setTimeout(function(){t.className='toast'},3500);}
-var CTRL={all:{t:'Gesamtes Gebiet',c:'go'},edge:{t:'Begrenzung',c:'go'},pause:{t:'Pause',c:''},resume:{t:'Fortsetzen',c:'go'},stop:{t:'Stop',c:'stop'},dock:{t:'Andocken',c:''},home:{t:'Stopp & Heim',c:'stop'}};
+var CTRL={all:{t:'Gesamtes Gebiet',c:'go'},edge:{t:'Begrenzung',c:'go'},pause:{t:'Pause',c:''},resume:{t:'Fortsetzen',c:'go'},stop:{t:'Stop',c:'stop'},dock:{t:'Andocken',c:''},home:{t:'Stopp & Heim',c:'stop'},maintenance:{t:'Zum Wartungspunkt',c:''}};
 var ctrlKey='';
 function renderControls(list){var el=document.getElementById('ctrlBtns');if(!el)return;el.innerHTML='';(list||[]).forEach(function(b){var m=CTRL[b.key];if(!m)return;var btn=document.createElement('button');btn.className=m.c;btn.textContent=b.label||m.t;btn.onclick=function(){cmd(b.key)};el.appendChild(btn);});}
 var ZBTN={zonestart:{t:'Diese Zone mähen',c:'go',f:function(){cmd('zone&id='+zv())}},queueadd:{t:'+ zur Reihenfolge',c:'',f:function(){addSel()}},queuerun:{t:'Reihenfolge mähen',c:'go',f:function(){cmd('queuerun')}},queueclear:{t:'Leeren',c:'',f:function(){clearSel()}}};
@@ -2300,6 +2312,7 @@ HTML;
                 1  => $this->Translate('Mow whole area'),
                 2  => $this->Translate('Mow edge'),
                 3  => $this->Translate('Resume mowing'),
+                4  => $this->Translate('Go to maintenance point'),
                 10 => $this->Translate('Stop'),
                 11 => $this->Translate('Dock (keep task)'),
                 12 => $this->Translate('Pause'),
