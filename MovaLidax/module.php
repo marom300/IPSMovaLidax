@@ -542,6 +542,42 @@ class MovaLidax extends IPSModule
     }
 
     /**
+     * Experten/Debug (MOVA_SendTask): beliebigen 2:50-Task-Payload senden und Antwort zurückgeben.
+     * Nur für Protokoll-Experimente — Payload als JSON-Objekt, z. B. '{"m":"a","p":0,"o":109}'.
+     */
+    public function SendTask(string $Json): string
+    {
+        $p = json_decode($Json, true);
+        if (!is_array($p)) {
+            return 'Ungueltiges JSON';
+        }
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            return 'Nicht verbunden';
+        }
+        $res = $this->sendAction(2, 50, [$p]);
+        $out = json_encode($res, JSON_UNESCAPED_SLASHES);
+        $this->LogMessage('SendTask ' . $Json . ' -> ' . $out, KL_NOTIFY);
+        return (string) $out;
+    }
+
+    /** Experten/Debug (MOVA_SetProp): set_properties auf siid/piid mit JSON-Wert, Antwort zurück. */
+    public function SetProp(int $Siid, int $Piid, string $JsonValue): string
+    {
+        $v = json_decode($JsonValue, true);
+        if ($v === null && trim($JsonValue) !== 'null') {
+            return 'Ungueltiges JSON';
+        }
+        if (!$this->ensureLogin() || !$this->ensureDevice()) {
+            return 'Nicht verbunden';
+        }
+        $res = $this->sendCommand('set_properties',
+            [['did' => $this->ReadAttributeString('Did'), 'siid' => $Siid, 'piid' => $Piid, 'value' => $v]]);
+        $out = json_encode($res, JSON_UNESCAPED_SLASHES);
+        $this->LogMessage('SetProp ' . $Siid . ':' . $Piid . ' ' . $JsonValue . ' -> ' . $out, KL_NOTIFY);
+        return (string) $out;
+    }
+
+    /**
      * Zum Wartungspunkt fahren (Opcode 109, am Gerät ermittelt via Task-Deskriptor 2:50).
      * Reine Positionierfahrt zum in der App gespeicherten Punkt — wie Dock ohne Freischalt-Pflicht.
      */
