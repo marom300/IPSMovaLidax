@@ -547,7 +547,8 @@ class MovaLidax extends IPSModule
      */
     public function GoToMaintenance(): bool
     {
-        return $this->mowTask('Zum Wartungspunkt', ['m' => 'a', 'p' => 0, 'o' => 109]);
+        // 'd' als leeres Objekt mitsenden — ohne 'd' legt das Gerät den Task nur an (status:false)
+        return $this->mowTask('Zum Wartungspunkt', ['m' => 'a', 'p' => 0, 'o' => 109, 'd' => new stdClass()]);
     }
 
     /**
