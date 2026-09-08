@@ -182,6 +182,8 @@ class MovaLidax extends IPSModule
         $this->createProfiles();
 
         $this->RegisterVariableInteger('Battery', $this->Translate('Battery'), '~Battery.100', 10);
+        // Bool „Aktiv" (true = mäht/kehrt zurück/kartiert) — für IPSView-Anzeigen
+        $this->RegisterVariableBoolean('Active', $this->Translate('Active'), '~Switch', 15);
         $this->RegisterVariableInteger('State', $this->Translate('Status'), 'MOVA.Status', 20);
         $this->RegisterVariableInteger('Charging', $this->Translate('Charging'), 'MOVA.Charging', 30);
         $this->RegisterVariableBoolean('Online', $this->Translate('Online'), '', 40);
@@ -281,6 +283,7 @@ class MovaLidax extends IPSModule
             }
             if (isset($status['state'])) {
                 $this->SetValue('State', (int) $status['state']);
+                $this->updateActiveFlag((int) $status['state']);
             }
             if (isset($status['charging'])) {
                 $this->SetValue('Charging', (int) $status['charging']);
@@ -793,6 +796,12 @@ class MovaLidax extends IPSModule
             . ' — Antwort: ' . json_encode($res, JSON_UNESCAPED_SLASHES), $ok ? KL_NOTIFY : KL_WARNING);
         $this->setLastCommand($label, $ok);
         return $ok;
+    }
+
+    /** „Aktiv"-Flag aus dem DeviceStatus ableiten: 1=Mäht, 5=Rückkehr, 11=Kartierung. */
+    private function updateActiveFlag(int $state): void
+    {
+        $this->SetValue('Active', in_array($state, [1, 5, 11], true));
     }
 
     /** Schreibt die Sofort-Rückmeldung des letzten Steuerbefehls (Cloud-Annahme). */
@@ -1942,6 +1951,7 @@ HTML;
     {
         if ($State >= 0) {
             $this->SetValue('State', $State);
+            $this->updateActiveFlag($State);
         }
         if ($Battery >= 0) {
             $this->SetValue('Battery', $Battery);

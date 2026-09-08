@@ -2,6 +2,7 @@
     "translations": {
         "de": {
             "Battery": "Akku",
+            "Active": "Aktiv",
             "Status": "Status",
             "Charging": "Ladezustand",
             "Online": "Online",
